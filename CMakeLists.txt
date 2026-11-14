@@ -19,9 +19,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(MB_AVX2       "Build the four-pixel AVX2 kernel (needs an AVX2 CPU)" ON)
 option(MB_BUILD_TESTS "Build the b2 verification programs" OFF)
 
-# Exactly the translation-unit list in buildall.bat.  The src/recovered*,
-# src/app and most of src/port trees are historical reconstruction material
-# and are deliberately NOT compiled.
+# Exactly the translation-unit list in buildall.bat: the portable C++20
+# engine and its platform bridge.  The optional helper trees under src/app
+# and src/port are not part of the command-line engine build.
 set(MB_CORE_SOURCES
   src/bigfloat.cpp
   src/gmp_bridge.cpp

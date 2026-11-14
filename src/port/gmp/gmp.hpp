@@ -1,7 +1,7 @@
 // GMP mpf equivalent layer.
 //
-// The original binary links libgmp-10 and uses only the mpf (multi-precision
-// float) entry points, plus four HFLOAT<->mpf bridge helpers recovered from
+// The reference engine links libgmp-10 and uses only the mpf (multi-precision
+// float) entry points, plus four HFLOAT<->mpf bridge helpers derived from
 // the engine (mpf_store / mpf_load / mpf_hi / mpf_lo).  Our BigFloat already
 // provides base-10^9 limbs, so the bridge is:
 //

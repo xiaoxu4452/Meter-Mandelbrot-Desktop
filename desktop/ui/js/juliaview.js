@@ -1,14 +1,14 @@
 /* ------------------------------------------------------------------
- * juliaview.js — the reference program's Julia preview window.
+ * juliaview.js — the reference engine's Julia preview window.
  *
  * The original does not draw a "mini Mandelbrot" in the corner.  It keeps a
- * second REALM and a second VIEWPORT (00406070.c:44-50): `vpex` renders the
+ * second REALM and a second VIEWPORT (design-note.c:44-50): `vpex` renders the
  * Julia set for the Mandelbrot point currently under the cursor, and the very
  * same fragment shader colours it with `uniforms.julia = true` and
- * `uniforms.j = c` (005499b0.c:118-131).  In mode 1 a mouse move writes the
- * marked point into the Julia realm's seed (00405590.c:126-137 ->
- * 004442f0.c:65-76); the small window is 56x56 inside a 60x60 frame
- * (004169c0.c:130-155).
+ * `uniforms.j = c` (design-note.c:118-131).  In mode 1 a mouse move writes the
+ * marked point into the Julia realm's seed (design-note.c:126-137 ->
+ * design-note.c:65-76); the small window is 56x56 inside a 60x60 frame
+ * (design-note.c:130-155).
  *
  * This is that window, docked at the top of the console rather than floating
  * over the canvas.  It has its own iteration field and its own WebGL surface,

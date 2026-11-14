@@ -1,12 +1,12 @@
 @echo off
 setlocal
 rem ---------------------------------------------------------------------------
-rem Desktop build.  One renderer (the reconstructed core), one shell
+rem Desktop build.  One renderer (the C++ core), one shell
 rem (Win32 + WebView2), one UI snapshot bundled into the exe.
 rem Output: ..\Mandelbrot View.exe
 rem
-rem MB_CORE is the single source of truth for the renderer: the rebuilt core in
-rem C:\Users\harve\Desktop\mande\new\src (deep.cpp + exact oracle).  The shell
+rem MB_CORE is the single source of truth for the renderer: the core in this
+rem checkout's src\ (deep.cpp + exact oracle).  The shell
 rem keeps its framework -- WebView2 panels, tile scheduling, the D3D11 child
 rem window -- and only borrows the pixels.  Nothing under core\ draws any more;
 rem it stays linked so the fallback families still work.

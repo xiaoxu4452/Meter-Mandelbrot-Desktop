@@ -45,11 +45,11 @@ which is the scriptable, verifiable, batch-capable renderer.
 
 | Path | Contents |
 | --- | --- |
-| `src/` | The renderer: `deep.cpp` (perturbation + AVX2 quad kernel), `reference.cpp` (orbit + series approximation), `bigfloat.cpp`, `floatexp.hpp`, `gmp_bridge.cpp`, `dive.cpp` (Newton nucleus / Misiurewicz), `render.cpp`, `main.cpp`, headers. `src/recovered*` are historical disassembly reconstructions, **not compiled**. |
+| `src/` | The renderer: `deep.cpp` (perturbation + AVX2 quad kernel), `reference.cpp` (orbit + series approximation), `bigfloat.cpp`, `floatexp.hpp`, `gmp_bridge.cpp`, `dive.cpp` (Newton nucleus / Misiurewicz), `render.cpp`, `main.cpp`, headers. Only the listed translation units take part in the build. |
 | `tests/` | `b2/` verification programs: `cmp`, `bench`, `shot`, `trace`, `sa`, `sareplay`, `gmporbit`, `gmpbench`, `parsewidth`, … |
 | `desktop/` | Windows application: `shell/` (Win32 + WebView2 host, 4-channel field bridge, D3D11 canvas), `ui/` (embedded HTML/CSS/JS workbench), `core/`, `gpu/`, `tools/` (UI resource generator), `third_party/` (vendored SDK headers and import libraries), `build.bat`. |
 | `runtime/libgmp-10.dll` | The Windows GMP runtime shipped next to the exe (GMP 6.3.0). |
-| `docs/` | Build guide, algorithm notes (EN + ZH), original development plan, shipped product README. |
+| `docs/` | Build guide, algorithm notes (EN + ZH), shipped product README. |
 | `buildall.bat`, `b2.bat`, `buildapp.bat`, `env-msvc.bat` | Windows build scripts for the CLI and the full application. |
 | `CMakeLists.txt`, `Makefile`, `build-linux.sh` | Linux / macOS build. |
 
@@ -170,6 +170,5 @@ digits 21 s); `mset misiurewicz --m 2 --p 2` returns `0+1i`, `(3,1)` returns
 ## 8. Licence
 
 Project code: MIT (see [LICENSE](LICENSE)). Vendored third-party components
-keep their own licences — see [THIRD_PARTY.md](THIRD_PARTY.md). This is an
-independent reconstruction of *Retinamandelbrot for Windows Beta*; it is not
-Kalles Fraktaler (`kf-2.15.5.2`).
+keep their own licences — see [THIRD_PARTY.md](THIRD_PARTY.md). The renderer
+is an independent C++20 implementation based on published algorithms.

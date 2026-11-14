@@ -1,19 +1,19 @@
 /* ------------------------------------------------------------------
- * refpreset.js — the reference program's own JSON formats.
+ * refpreset.js — viewport / parameter JSON formats.
  *
- * This is a transcription of the loader in the reference binary, not a
- * format we invented.  Every rule below is traceable to the decompilation:
+ * The loader below follows the documented example-file schema.  The keys and
+ * defaults are listed alongside the helpers that read and write them:
  *
- *   00539080.c  loadviewportjson          viewport keys, juliamode, flags
- *   00537270.c  worker_storeviewportjson  the keys it writes back
- *   005472c0.c  readParams                parameters.* semantics & defaults
- *   00545e70.c  writeParams               the keys it writes back
- *   00547070.c  ColorschemeFromDictionary colorscheme.* validation
- *   00545b90.c  DictionaryFromColorscheme the keys it writes back
- *   00546630.c  loadParams                exp(f_i + F), init_i + I
- *   00545d80.c  initParams                default F = -ln(10), I = 0
- *   0055ef40.c  main                      \appdata\mandelbrot.json keys
- *   08_全量覆盖/DWARF  INITIALCOLORS @ VA 0x0056bd40 (.rdata)
+ *   loadviewportjson          viewport keys, juliamode, flags
+ *   worker_storeviewportjson  the keys it writes back
+ *   readParams                parameters.* semantics & defaults
+ *   writeParams               the keys it writes back
+ *   ColorschemeFromDictionary colorscheme.* validation
+ *   DictionaryFromColorscheme the keys it writes back
+ *   loadParams                exp(f_i + F), init_i + I
+ *   initParams                default F = -ln(10), I = 0
+ *   main                      \appdata\mandelbrot.json keys
+ *   INITIALCOLORS             static default colour table
  *
  * The three mistakes this file used to make, all of which changed the picture:
  *
@@ -40,13 +40,13 @@ import { REF_DEFAULT_LOG_FREQ } from './palettes.js';
 
 const ZOOM_SPAN = 2.0;      // span = ZOOM_SPAN / zoom
 
-/** NCOLOR in the reference shader (00546630.c / core_fractal.glsl). */
+/** NCOLOR in the reference shader (design-note.c / core_fractal.glsl). */
 export const REF_MAX_COLORS = 20;
 /** NPARAM in the reference shader; `custom` is read into params.param[10]. */
 export const REF_MAX_PARAM = 10;
 
 /**
- * INITIALCOLORS, read out of mandelbrot.exe at VA 0x0056bd40 as three
+ * INITIALCOLORS, taken from the static default colour table as three
  * float32 quintuples (r, g, b, frequency, initial).  readParams copies this
  * into params->color[0..2] before it looks at the file, so these are the
  * values a partial `colors` entry inherits.
@@ -189,7 +189,7 @@ export function classifyRefJson(obj) {
   const settingsHits = keys.filter(k => REF_SETTINGS_KEYS.includes(k)).length;
   if (settingsHits > 0) return 'settings';
   /* `{}` is a legal file: loadviewportjson treats a missing `parameters`
-   * dictionary as "use every default" (Retinamandelbrot Example 1 is exactly
+   * dictionary as "use every default" (Example 1 is exactly
    * that file).  Our own extensions are also preset-only keys. */
   const extensions = ['name', 'nameZh', 'nameEn', 'id', 'category', 'format',
                       'ramp', 'spec', 'animation', 'flags', 'showZoom',
@@ -205,7 +205,7 @@ function isColorschemeDict(o) {
 }
 
 /**
- * \appdata\mandelbrot.json (0055ef40.c).  Only keys the binary actually
+ * \appdata\mandelbrot.json (design-note.c).  Only keys the binary actually
  * reads are carried; `videooptions` is a nested dictionary of its own.
  */
 export function readRefSettings(obj) {
@@ -248,8 +248,8 @@ export function importRefPreset(obj, opts = {}) {
    *   julia_mx / julia_my                    the seed (Mandelbrot point)
    *
    * loadviewportjson clamps juliamode > 2 back to 0.  The GUI uses
-   * `juliamode == 1` for the embedded Julia window (00405590.c:126) and
-   * `juliamode == 2` for the full-screen Julia view (00402850.c:14), so only
+   * `juliamode == 1` for the embedded Julia window (design-note.c:126) and
+   * `juliamode == 2` for the full-screen Julia view (design-note.c:14), so only
    * 2 replaces the main viewport. */
   const jmRaw = p.juliamode != null ? p.juliamode : obj.juliamode;
   const juliamode = Math.max(0, Math.min(2, Number(jmRaw) | 0 || 0));
@@ -299,7 +299,7 @@ export function importRefPreset(obj, opts = {}) {
     if (mx != null && my != null) out.juliaSeed = { re: mx, im: my };
   }
 
-  /* The reference keeps a second VIEWPORT for the Julia preview (00406070.c).
+  /* The reference keeps a second VIEWPORT for the Julia preview (design-note.c).
    * Its own centre, zoom and rotation are separate from the main view. */
   if (obj.julia_zoom != null || obj.julia_rotation != null ||
       obj.julia_initialzoom != null) {
@@ -313,7 +313,7 @@ export function importRefPreset(obj, opts = {}) {
 
   if (obj.animation && obj.animation.keys) out.animation = obj.animation;
 
-  /* `flags` is a numeric REALM bitfield (00539080.c:290), not an object of
+  /* `flags` is a numeric REALM bitfield (design-note.c:290), not an object of
    * switches.  Preserve the bits verbatim: storeviewportjson writes them into
    * the .mb header as 0xb1010000 | flags, and inventing meanings would break
    * a round trip. */

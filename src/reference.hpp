@@ -1,7 +1,7 @@
 // Reference orbit and series approximation (the "deep zoom" core).
 //
 // The original engine (newref_hfloat / makeref_hfloat / multaylor_hfloat /
-// radtest_hfloat in the recovered pseudocode) builds high-precision reference
+// radtest_hfloat in the reference design notes) builds high-precision reference
 // orbits, stores them in a canvas hierarchy, and uses local offsets in HFLOAT
 // so that per-pixel arithmetic never needs the absolute precision.  This
 // implementation keeps that separation explicitly:

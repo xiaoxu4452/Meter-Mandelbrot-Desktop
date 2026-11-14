@@ -541,7 +541,7 @@ int perturbPixel(const Ctx& g, double fx, double fy, int refIdx,
     dr = nr;
     di = ni;
     ++ridx;
-    /* Two snapshots.  `chk` is the reference program's fixed one (taken at
+    /* Two snapshots.  `chk` is the reference engine's fixed one (taken at
      * kCycleChk); `roll` moves forward every 32 iterations.  An orbit that
      * converges to a fixed point never returns to its early value, so the
      * fixed check alone made every interior pixel burn the entire iteration

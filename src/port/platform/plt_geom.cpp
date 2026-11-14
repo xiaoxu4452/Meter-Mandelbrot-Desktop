@@ -1,7 +1,7 @@
 // Win32 geometry seed: SetRect / InflateRect / PtInRect / MapDialogRect.
 //
-// Addresses 0055ee10, 0055ee90, 0055ee60, 0055ee80 are IAT thunks into
-// user32; the semantics below are the documented ones the original relies on
+// Addresses 0055ee10, 0055ee90, 0055ee60, 0055ee80 are imports from
+// user32; the semantics below are the documented ones the engine relies on
 // (rectangle normalisation, negative inflation clamping, dialog-unit mapping
 // via the 8x16 base-unit of the MS Shell Dlg font).  The remaining geometry
 // helpers (OffsetRect, CopyRect, IntersectRect, UnionRect, IsRectEmpty) back

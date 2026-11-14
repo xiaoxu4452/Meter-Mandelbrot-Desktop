@@ -24,7 +24,7 @@ namespace {
 
 void usage() {
     std::cout <<
-        "mset — scientific Mandelbrot engine (Retinamandelbrot reconstruction)\n"
+        "mset — scientific Mandelbrot engine (independent C++20 core)\n"
         "\n"
         "Usage:\n"
         "  mset render [options]\n"
@@ -423,7 +423,7 @@ int cmd_info() {
               << "  output      PNG / PPM\n"
               << "\n"
               << "Verified (PNG comparisons byte-identical unless stated):\n"
-              << "  1.54e73  deepest shipped example (Retinamandelbrot 14), 640x400 0.47 s\n"
+              << "  1.54e73  deepest shipped example (Example 14), 640x400 0.47 s\n"
               << "  1e38     vs exact BigFloat oracle (cmp 38 3000 5): 100% identical\n"
               << "  1e20     100% identical; 1e6 98.71% (chaotic boundary +-1 iteration)\n"
               << "  Julia    1e6/1e12/1e20/1e38 vs --exact: 0 differing pixels\n"

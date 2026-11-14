@@ -1,21 +1,19 @@
 // Port-layer registry.
 //
-// Every Ghidra address of the authoritative index (docs/FUNCTION_MAP.csv,
-// 1,593 rows) must resolve to a compiled C++ symbol.  Each implementation
-// translation unit registers its rows at start-up with the macros below:
+// A lightweight coverage table: each entry records a stable identifier, the
+// C++ symbol that implements it and the defining translation unit.  Each
+// implementation unit registers its rows at start-up with the macros below:
 //
 //   MSET_COV_ENTRY (tag, "00403a90", "StringCopyWorkerA",
 //                   ::mset::cov::Impl::ThirdPartyEquivalent, str_copy_worker_a)
 //
-// The registration stores the address, the recovered symbol name, the C++
-// symbol, the defining source file and the implementation class, and it binds
-// the symbol by address (`&symbol`), so a row can only be registered for a
-// symbol that really exists in the translation unit.  Member functions use
-// MSET_COV_MEMBER, which witnesses `&Type::method` without a function-pointer
-// field (member-function pointers are not convertible to object pointers).
+// The registration binds the symbol by address (`&symbol`), so a row can only
+// be registered for a symbol that really exists in the translation unit.
+// Member functions use MSET_COV_MEMBER, which witnesses `&Type::method`
+// without a function-pointer field (member-function pointers are not
+// convertible to object pointers).
 //
-// `mset coverage --dump` prints the table; tools/coverage_report.py joins it
-// with FUNCTION_MAP.csv and verifies address coverage and symbol presence.
+// `mset coverage --dump` prints the table for inspection.
 
 #pragma once
 
@@ -25,15 +23,15 @@ namespace mset::cov {
 
 enum class Impl {
     CoreAlgorithm,        // an algorithm the fractal engine itself implements
-    Application,          // application / UI / IO layer of the original binary
+    Application,          // application / UI / IO layer of the reference engine
     ThirdPartyEquivalent  // used subset of CRT, Win32, pthread, GMP, GLFW, FFmpeg
 };
 
 const char* impl_name(Impl impl);
 
 struct Entry {
-    const char* address;   // "00403a90" — Ghidra address, 8 hex digits
-    const char* function;  // recovered original symbol name
+    const char* address;   // "00403a90" — stable 8-hex-digit identifier
+    const char* function;  // original symbol name
     const char* symbol;    // C++ symbol that implements it
     const char* file;      // source file of the implementation
     Impl impl;

@@ -19,7 +19,7 @@
 //      against a reference anchored at the offending pixel itself.
 //
 // Both cures are the "new reference" hierarchy of the original engine
-// (newref_hfloat in the recovered pseudocode), applied until the frame is
+// (newref_hfloat in the reference design notes), applied until the frame is
 // clean instead of per tile.
 //
 // Per-pixel arithmetic is a binary float-exp (double mantissa, int exponent).

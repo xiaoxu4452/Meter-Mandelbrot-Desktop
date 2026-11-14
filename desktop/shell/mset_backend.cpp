@@ -41,7 +41,7 @@ namespace {
 
 /* span = mant * 2^exp, possibly 2^-10000.  A double cannot hold the value, so
  * only its decimal logarithm is computed and the mantissa/exponent pair is
- * recovered from that.  Relative error is ~1e-15, i.e. a millionth of a pixel
+ * derived from that.  Relative error is ~1e-15, i.e. a millionth of a pixel
  * at any depth. */
 void decimal_span(double mant, int exp2, double& out_m, int& out_e) {
     if (!(mant > 0.0)) { out_m = 1.0; out_e = 0; return; }

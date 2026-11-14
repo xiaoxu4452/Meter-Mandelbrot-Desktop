@@ -138,7 +138,7 @@ static int buildReferenceMpf(const Request& q, int bits, int maxIter,
     Mpf::add(g.slot(5), g.slot(5), d);
   }
   g.setConstantSlots(4, 5);
-  /* 顺序同伪代码：先平方，再用**旧** x,y 算 ny，最后写 nx。 */
+  /* 顺序同算法说明：先平方，再用**旧** x,y 算 ny，最后写 nx。 */
   g.add(COp::Sqr, 2, 0, 0);
   g.add(COp::Sqr, 3, 1, 1);
   g.add(COp::ImagIter2, 1, 0, 1);

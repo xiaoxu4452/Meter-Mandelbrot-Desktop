@@ -1,6 +1,6 @@
 // ------------------------------------------------------------------
 // mb_mpf.h — GMP `mpf_t` 语义的可变精度浮点，加上原版的 COMPUTER /
-// COMPUTERGROUP 迭代链（伪代码 004f8160 / 004f8d20 / 004fc9e0 / 004fca50）。
+// COMPUTERGROUP 迭代链（算法说明 004f8160 / 004f8d20 / 004fc9e0 / 004fca50）。
 //
 // 设计只覆盖参考轨道需要的部分：init2 / set / set_ui / set_d / set_prec /
 // set_prec_raw / add / sub / mul / sqr / mul_2exp / cmp / get_d，以及

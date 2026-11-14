@@ -1,7 +1,7 @@
 // Shared UI entry points.
 //
-// The 205 recovered app.ui functions split across two implementation slices.
-// The structural ones — the message dispatcher, the mode machine, recalc and
+// The UI entry points are split across two implementation slices.  The
+// structural ones — the message dispatcher, the mode machine, recalc and
 // reset, the menu builder — live in slice A (src/app/ui_a_*.cpp) and are
 // declared here so slice B can call them without owning a second definition.
 
@@ -28,7 +28,7 @@ void recalcredraw(AppState& app);
 // Render the current frame if the state is dirty (renderpath, 00402xxx).
 void render_if_needed(AppState& app, std::string* error);
 
-// Build the application menu from the recovered labels (makemenu, 00408010).
+// Build the application menu from the documented menu labels.
 void make_menu(AppState& app);
 
 // Window message dispatch (WindowProc, 004018b0).

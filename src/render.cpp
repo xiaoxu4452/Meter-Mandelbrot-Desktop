@@ -18,7 +18,7 @@
 namespace {
 
 // Pixel (px, py) -> plane offset in pixels, rotated about the frame centre.
-// The recovered program applies the view rotation to this mapping, so a view
+// The reference engine applies the view rotation to this mapping, so a view
 // turned by theta is exactly the same frame with this basis turned; nothing
 // else in the pipeline has to know about it.
 inline void frame_offset(const RenderRequest& req, double px, double py,
@@ -296,7 +296,7 @@ bool render_image(const RenderRequest& req, Image& out, RenderStats& stats, std:
 
     // ---- palette band width -------------------------------------------------
     // Ten bands across the frame's own escape span, which is the exposure the
-    // recovered program uses (effective_palette_scale: 15/maxiter on a frame
+    // reference engine uses (effective_palette_scale: 15/maxiter on a frame
     // whose span is ~1.5x that).  A fixed coordinate cannot work at both ends:
     // an overview spends its whole range in the first few escapes, while a 1e38
     // frame spans ~129 iterations out of a 3000 iteration budget -- a fixed

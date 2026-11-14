@@ -262,9 +262,9 @@ void testColourLibrary() {
         "LUT resolution scales to 16384", d);
 }
 
-/* 07_反汇编与伪代码: the four iteration / precision predicates.  The values
- * below are the constants in the decompiled C, not tuned thresholds. */
-void testDisassemblyPolicy() {
+/* 公开算法文献: the four iteration / precision predicates.  The values
+ * below are the constants in the reference build, not tuned thresholds. */
+void testIterationPolicy() {
   using mbc::PrecisionTemplate;
   check(mbc::kVertexSlack == 3000 && mbc::kVertexGate == 1000 &&
         mbc::kCheckSlack == 10000 &&
@@ -272,27 +272,27 @@ void testDisassemblyPolicy() {
         mbc::kIdleMaxIter == 0x7fffffff,
         "0046f630 / 00498d00 / 00429d50 constants");
   check(mbc::vertexIterBudget(100, 0) == 3300,
-        "0046f630.c:114 known*3+3000", "100 -> 3300");
+        "design-note.c:114 known*3+3000", "100 -> 3300");
   check(mbc::vertexIterBudget(0, 1000) == 5000,
-        "0046f630.c:107 observed*5", "1000 -> 5000");
+        "design-note.c:107 observed*5", "1000 -> 5000");
   check(mbc::vertexIterBudget(0, 0) == 0x2aaaa2da,
-        "0046f630.c:104 sentinel");
+        "design-note.c:104 sentinel");
   check(mbc::vertexIterBudget(1, 0) == 3003 &&
         mbc::vertexIterBudget(0, 1) == 3000,
-        "0046f630.c:114 floor at slack");
+        "design-note.c:114 floor at slack");
   check(mbc::checkCanvasIterBudget(1000) == 15000,
-        "00498d00.c:295 observed*5+10000");
+        "design-note.c:295 observed*5+10000");
   check(mbc::vertexNeedsRecalc(3999, 1000) &&
         !mbc::vertexNeedsRecalc(4000, 1000),
-        "0046f630.c:197 known*3+1000 gate");
+        "design-note.c:197 known*3+1000 gate");
   check(mbc::precisionTemplateFor(499, false) == PrecisionTemplate::kDouble &&
         mbc::precisionTemplateFor(500, false) == PrecisionTemplate::kLongDouble &&
         mbc::precisionTemplateFor(8000, false) == PrecisionTemplate::kHFloat,
-        "004325a0.c:18-24 Mandelbrot 500/8000");
+        "design-note.c:18-24 Mandelbrot 500/8000");
   check(mbc::precisionTemplateFor(124, true) == PrecisionTemplate::kDouble &&
         mbc::precisionTemplateFor(125, true) == PrecisionTemplate::kLongDouble &&
         mbc::precisionTemplateFor(1600, true) == PrecisionTemplate::kHFloat,
-        "004325a0.c:21-24 Julia 125/1600");
+        "design-note.c:21-24 Julia 125/1600");
 }
 
 }  // namespace
@@ -305,7 +305,7 @@ int main() {
   testPredicates();
   testColourScience();
   testColourLibrary();
-  testDisassemblyPolicy();
+  testIterationPolicy();
   std::printf("\nRESULT: %d passed, %d failed -> %s\n", g_pass, g_fail,
               g_fail == 0 ? "ALL PASS" : "FAIL");
   return g_fail == 0 ? 0 : 1;

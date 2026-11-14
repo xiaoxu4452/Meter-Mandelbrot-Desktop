@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------
  * glscene.js — the whole fractal in one fragment shader.
  *
- * The reference program is a *volume shader* benchmark in spirit: every pixel
+ * The reference engine is a *volume shader* benchmark in spirit: every pixel
  * traces its own orbit inside the fragment shader, and the CPU never touches
  * a pixel.  The web build up to now has been the opposite — one JS worker per
  * tile, palette LUT inside the tile loop — which is why a phone spends a

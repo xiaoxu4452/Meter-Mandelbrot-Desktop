@@ -28,7 +28,7 @@ export async function gmpLib() {
 /**
  * Bits needed for a frame whose half-span is 2^spanLog2.
  *
- * This is the recovered program's own rule, not an estimate:
+ * This is the reference engine's own rule, not an estimate:
  * `mset plan --zoom 1e12 / e38 / e74 / 1e800000` reports
  * 62 / 88 / 124 / 800050 decimal digits — that is exactly
  * `zoom_exponent + 50`, and it already carries the iteration error (50 digits
@@ -44,7 +44,7 @@ export function physicalBits(spanLog2, maxIter) {
 
 /** Bits needed for a frame whose half-span is 2^spanLog2. */
 export function precisionForSpan(spanLog2, maxIter, safety = 1) {
-  /* An ACTIVE width, not a tier: physicalBits() is already the recovered
+  /* An ACTIVE width, not a tier: physicalBits() is already the reference
    * program's `digits = depth10 + 50` rule.  The old code multiplied that by
    * 3 and rounded up, asking for 512 bits where 256 are enough — and MPFR
    * cost grows super-linearly with the width, so every deep frame paid for
@@ -188,7 +188,7 @@ export async function buildReferenceOrbit({
       /* Two float32 limbs, 48 bits total.  The low word has to be the residual
        * of the *float32-rounded* high word: taking it against the 53-bit
        * double (the old code did) leaves a pair whose low limb describes a
-       * value the shader never sees, so the reconstruction was only good to
+       * value the shader never sees, so the hi/lo pair was only good to
        * 24 bits while the comment claimed 48. */
       const hrD = hi(zr);
       const hiI0 = hi(zi);

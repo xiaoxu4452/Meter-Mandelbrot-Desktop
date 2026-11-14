@@ -650,7 +650,7 @@ struct Job {
    * it is present it replaces the built-in ramp entirely, which is what makes
    * the editor's changes actually reach the pixels. */
   std::vector<float> stops;
-  /* Additive palette from the reference program's examples: a flat list of
+  /* Additive palette from the reference engine's examples: a flat list of
    * (r, g, b, frequency, initial) quintuples.  The page sends this when the
    * selected scheme is one of the transcribed example palettes; `stops` is
    * then empty and vice versa. */
@@ -797,7 +797,7 @@ static std::string JsonStr(const std::string& s, const char* key, const std::str
 static bool ReadAllText(const std::wstring& path, std::string& out);
 static std::string JsonEscapeStr(const std::string& s);
 
-/* The reference program keeps its knobs in `appdata\mandelbrot.json`
+/* The reference engine keeps its knobs in `appdata\mandelbrot.json`
  * (winparameters.html): framerate / nthread / totalmemory / graphicsmemory /
  * graphicsrate / cachesize / canvas size / guiscale / linewidth / pointsize /
  * ntrace / GLFW major+minor / yreduce (+ videooptions).  We read the same file,
@@ -1167,7 +1167,7 @@ static bool ExportPngNative() {
 
 /* ---------------------------------------------------------------- presets
  *
- * The reference program stores a whole view as one JSON file (see its
+ * The reference engine stores a whole view as one JSON file (see its
  * examples/*.json).  Both directions go through the system file dialogs here
  * rather than through the page: a WebView2 page cannot read an arbitrary path,
  * and it has no download route that lands where the user pointed.  Doing it in
@@ -1988,7 +1988,7 @@ static void RenderThread() {
     req.quality = j.quality;
     /* The page can either render a pass at n times the resolution (and let the
      * canvas box-reduce it) or ask the core for supersampling here.  Both are
-     * supported: `aa` from the page is the reference program's `samples`. */
+     * supported: `aa` from the page is the reference engine's `samples`. */
     req.aa = j.aa > 0 ? j.aa : 1;
     req.detail = (j.detail < 0) ? 0 : (j.detail > 3 ? 3 : j.detail);
     req.traps = (j.traps < 0) ? 0 : (j.traps > 4 ? 4 : j.traps);
@@ -2008,7 +2008,7 @@ static void RenderThread() {
      * colour edit never needs a second code path. */
     mbc::Palette pal = mbc::builtinPalette(j.pal);
     if (!j.colors.empty() && (j.colors.size() % 5) == 0) {
-      /* Additive scheme: the same pal() the reference program runs, with the
+      /* Additive scheme: the same pal() the reference engine runs, with the
        * exact rgb/frequency/initial triples out of examples/*.json. */
       pal.mode = 0;
       pal.n = 0;
@@ -2056,7 +2056,7 @@ static void RenderThread() {
     bool gpuField = false;
     if (j.field) {
       /* The kernel computes the iteration field only; the page's shader turns
-       * it into pixels.  This is the reference program's own split, and it is
+       * it into pixels.  This is the reference engine's own split, and it is
        * what makes a colour change free: the field does not depend on it.
        *
        * Direct write: the kernel's `Field` adopts the reserved shared buffer,
@@ -2289,7 +2289,7 @@ static void RenderThread() {
                   st.bounded, st.escapeMin, st.escapeMax);
       }
       if (!onGpu) {
-        /* Backend swap: the pixels come from the reconstructed core
+        /* Backend swap: the pixels come from the C++ core
          * (native/mset) whenever it can describe the request.
          *
          * The page's gradient no longer forces a fallback: the core hands back
@@ -2313,7 +2313,7 @@ static void RenderThread() {
           grad.count = n;
           grad.stops = j.stops.data();
         }
-        /* The reconstructed core pays for a high-precision reference orbit and
+        /* The C++ core pays for a high-precision reference orbit and
          * its own full-core thread pool on every tile.  At shallow/medium depth
          * that is pure overhead: the stitched engine draws the identical frame
          * 3-5x faster here (108 ms vs 594 ms on the 2724x1416 home view).
@@ -2346,7 +2346,7 @@ static void RenderThread() {
          * `MB_FORCEMSET=1` still routes through it for A/B work. */
         /* 2026-11-14 B4: the rebuilt core is the renderer.
          *
-         * The paragraphs below describe why the *old* reconstructed core was
+         * The paragraphs below describe why the *old* C++ core was
          * demoted: its reference orbit escaped before the frame's pixels did,
          * so at 2^-340 the anchor died at iteration 110 against a true 279 and
          * the frame collapsed to one colour right where the user was zooming.
@@ -2395,14 +2395,14 @@ static void RenderThread() {
             st.glitches = mr.glitches;
             st.perturb = true;
             st.maxIterUsed = req.maxIter;
-            /* The recovered core reports the largest escape count it saw.  Pass
+            /* The reference core reports the largest escape count it saw.  Pass
              * it on: without it the pass metadata carries escMax=0 and the page
              * reads that as "nothing escapes here", i.e. the "no structure"
              * banner on every deep frame.  0 means "did not report", so it is
              * only forwarded when the core actually saw an escape. */
             if (mr.maxEscape > 0) st.escapeMax = mr.maxEscape;
             /* One line per distinct view is enough to tell from the log which
-             * producer drew it: the reconstructed core reports the digits and
+             * producer drew it: the C++ core reports the digits and
              * reference length it actually used. */
             static int msetLogs = 0;
             static int lastView = -1;
@@ -3461,7 +3461,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
         /* OpenCL is opt-in until the new core owns the compute path.  Left on
          * by default it hijacks the frame: the kernel writes a float field for
          * the OLD engine's request, the dispatcher skips the RGBA upload, and
-         * the reconstructed core never runs at all (log: bits=53, ref=0).
+         * the C++ core never runs at all (log: bits=53, ref=0).
          * MB_CL=1 enables it for measurement. */
         g_gpuField = clEnv && std::atoi(clEnv) != 0;
         LogMsg("[cl] device " + gi.clDevice + " " + gi.clVersion +

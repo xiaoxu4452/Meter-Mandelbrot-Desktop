@@ -1,4 +1,4 @@
-// Small, directly testable numerical algorithms recovered from the
+// Small, directly testable numerical algorithms derived from the
 // reference implementation:
 //   radtest_hfloat        — series-approximation radius test
 //   checkperiodgeneral    — cycle / periodicity detection

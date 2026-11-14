@@ -3,7 +3,7 @@
 //
 // This module replaces the D3D11 bitblt canvas.  It owns a child HWND with a
 // real GL context, a full-frame RGBA32F *field* texture and the colour shader
-// that turns that field into pixels — the same split the reference program
+// that turns that field into pixels — the same split the reference engine
 // uses (kernel -> tex_smoothiter/tex_dist; fragment shader -> colour).
 //
 // Why a field instead of RGBA: a tile that arrives later only has to write its

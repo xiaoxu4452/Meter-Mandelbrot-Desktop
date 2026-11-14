@@ -576,7 +576,7 @@ struct View {
 
     // Plane offset (complex, in plane units) of a pixel offset in the screen
     // basis.  With rotation the basis is turned about the frame centre, which
-    // is the same map the recovered program applies; every other stage of the
+    // is the same map the reference engine applies; every other stage of the
     // pipeline is then unaware that the view is rotated.
     void offset_px(double nx, double ny, Fexp& sx, Fexp& sy) const {
         if (!p->rotated()) {

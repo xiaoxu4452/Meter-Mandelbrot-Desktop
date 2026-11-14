@@ -2,7 +2,7 @@
 /* ------------------------------------------------------------------
  * gen-presets.mjs — build the preset library that ships *inside* the app.
  *
- * The library is the reference program's own `examples/*.json`: one entry per
+ * The library is built from the shipped `examples/*.json`: one entry per
  * file, plus a name pair and the set it belongs to.  That reverses the previous
  * generator, which multiplied a few dozen anchors by eight colour variants.
  * Those 282 cards framed the same eleven pictures with different tints — the
@@ -35,7 +35,7 @@ const outFile = path.join(root, 'src', 'ui', 'js', 'presets-data.js');
  * A file that omits `parameters.colors` does not mean "no colour" — the
  * program fills the 20-slot table with these three terms, and that is why so
  * many of its shipped pictures are saturated red/green/blue with hard-edged
- * blobs.  Two of the examples (Retinajulia 1, Retinamandelbrot 3) spell the
+ * blobs.  Two of the example presets spell the
  * table out, so the values below are read straight from those files rather
  * than invented.  Without this a palette-less preset renders black. */
 const DEFAULT_COLORS = [

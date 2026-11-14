@@ -88,7 +88,7 @@ export const I18N = {
     toneReset: '重置色调',
     gradAdd: '加色标',
     gradDel: '删色标',
-    gradReset: '还原',
+    gradReset: '重置',
     auto: '自动',
     iterRank: '自动精度',
     iterRankHint: '100 = 当前的自动迭代次数；越往下，主体线条越干净、渲染越快。',
@@ -235,7 +235,7 @@ export const I18N = {
 配合参考轨道扰动与混叠修正，可稳定放大到 10⁻³⁰⁰ 量级；桌面 C++ 核心用系统 GMP（FFT 乘法）做参考轨道，工作位宽最高 120 万位，坐标尺度可推进到 10⁻³⁰⁰⁰⁰⁰。
 
 交互沿用桌面分形工具的惯例：滚轮以光标为锚点缩放，拖动平移，双击放大。
-配色与预设体系参考 Retinamandelbrot / Retinajulia 的示例集组织方式。`,
+配色与预设体系按公开的示例集组织方式整理。`,
     aboutTech: '技术栈',
     aboutTechBody: 'WebAssembly（AssemblyScript）· ES Modules · Canvas 2D · BigInt 定点数 · 自研复数表达式库（Pratt 解析 / CSE 代码生成 / LaTeX 排版）',
     statPresets: '预设',
@@ -490,8 +490,8 @@ keeps the image stable down to roughly 10⁻³⁰⁰, and the desktop C++ high-p
 scales through system GMP (FFT multiplication) to a 1.2 Mbit working width, past 10⁻³⁰⁰⁰⁰⁰.
 
 Interaction follows desktop fractal tools: wheel zooms around the cursor, drag pans,
-double-click zooms in. Palettes and preset organisation are inspired by the
-Retinamandelbrot / Retinajulia example collections.`,
+double-click zooms in. Palettes and preset organisation follow the published
+example collections.`,
     aboutTech: 'Stack',
     aboutTechBody: 'WebAssembly (AssemblyScript) · ES Modules · Canvas 2D · BigInt fixed point · in-house complex expression library (Pratt parser / CSE codegen / LaTeX)',
     statPresets: 'presets',

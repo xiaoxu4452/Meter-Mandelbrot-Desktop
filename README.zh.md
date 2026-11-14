@@ -42,11 +42,11 @@ make CXX=clang++                         # 使用 Clang
 
 | 路径 | 内容 |
 | --- | --- |
-| `src/` | 渲染核心：`deep.cpp`（扰动 + AVX2 四宽核）、`reference.cpp`（轨道 + 级数近似）、`bigfloat.cpp`、`floatexp.hpp`、`gmp_bridge.cpp`、`dive.cpp`（Newton 核 / Misiurewicz 求解）、`render.cpp`、`main.cpp` 及全部头文件。`src/recovered*` 是历史反汇编还原快照，**不参与编译**。 |
+| `src/` | 渲染核心：`deep.cpp`（扰动 + AVX2 四宽核）、`reference.cpp`（轨道 + 级数近似）、`bigfloat.cpp`、`floatexp.hpp`、`gmp_bridge.cpp`、`dive.cpp`（Newton 核 / Misiurewicz 求解）、`render.cpp`、`main.cpp` 及全部头文件。仅上述列出的翻译单元参与构建。 |
 | `tests/` | `b2/` 验证程序：`cmp`、`bench`、`shot`、`trace`、`sa`、`sareplay`、`gmporbit`、`gmpbench`、`parsewidth` 等。 |
 | `desktop/` | Windows 程序：`shell/`（Win32 + WebView2 宿主、4 通道场桥、D3D11 画布）、`ui/`（内嵌 HTML/CSS/JS 工作台）、`core/`、`gpu/`、`tools/`（UI 资源生成器）、`third_party/`（随仓库附带的 SDK 头文件与导入库）、`build.bat`。 |
 | `runtime/libgmp-10.dll` | 与 exe 同目录发布的 Windows GMP 运行库（GMP 6.3.0）。 |
-| `docs/` | 构建指南、算法说明（中英）、开发计划、发布版产品说明。 |
+| `docs/` | 构建指南、算法说明（中英）、发布版产品说明。 |
 | `buildall.bat`、`b2.bat`、`buildapp.bat`、`env-msvc.bat` | Windows 下 CLI 与完整程序的构建脚本。 |
 | `CMakeLists.txt`、`Makefile`、`build-linux.sh` | Linux / macOS 构建。 |
 
@@ -154,5 +154,5 @@ A/B 开关（只影响性能，不改画面）：
 ## 8. 许可
 
 本项目代码 MIT（见 [LICENSE](LICENSE)）；随仓库附带的第三方组件保留各自许可，
-见 [THIRD_PARTY.md](THIRD_PARTY.md)。本项目是 *Retinamandelbrot for Windows
-Beta* 的独立重建，不是 Kalles Fraktaler（`kf-2.15.5.2`）。
+见 [THIRD_PARTY.md](THIRD_PARTY.md)。渲染核心为参考公开算法文献独立实现的
+C++20 代码。

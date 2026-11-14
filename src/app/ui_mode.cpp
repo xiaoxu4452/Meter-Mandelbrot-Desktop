@@ -1,12 +1,11 @@
-// app.ui mode machine: changemode (00418430, wrapper at 00418710).
+// app.ui mode machine: changemode.
 //
-// Recovered behaviour: the application keeps one `mode` value and a set of
-// mode-specific GUI sub-windows.  On a mode change each sub-window is
-// shown/hidden according to whether its mode is the new one, and every
-// visibility transition calls the window's parameter-change hook, which
-// rebuilds that window's layout and parameters.  Modes observed in the
-// pseudocode: 2 (render parameters), 3 (menu), 4 (dialog), 6 (overlay), plus
-// the trailing block at GUIWND+0x8d8f (video state).
+// The application keeps one `mode` value and a set of mode-specific GUI
+// sub-windows.  On a mode change each sub-window is shown/hidden according
+// to whether its mode is the new one, and every visibility transition calls
+// the window's parameter-change hook, which rebuilds that window's layout
+// and parameters.  Modes: 2 (render parameters), 3 (menu), 4 (dialog),
+// 6 (overlay), plus a trailing video-state block.
 //
 // The headless model keeps the same state machine: the sub-window flags live
 // in AppState::params, the parameter-change hook counts invocations so tests

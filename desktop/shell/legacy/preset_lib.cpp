@@ -111,7 +111,7 @@ std::vector<std::string> ListJsonFiles() {
 }
 
 /** One card's worth of a preset file.  Missing fields fall back to the ones the
- *  reference program uses when a key is absent, so an older file still lists. */
+ *  reference engine uses when a key is absent, so an older file still lists. */
 void AppendIndexItem(std::string& o, const std::string& file, const mj::Value& v) {
   const mj::Value& p = v.get("parameters");
   const mj::Value& cs = p.get("colorscheme");

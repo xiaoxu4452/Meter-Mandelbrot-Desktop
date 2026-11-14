@@ -12,8 +12,8 @@
 // carries a mip chain: sampling a level instead of level 0 is how a band
 // thinner than a pixel becomes its own average colour instead of moire.
 //
-// The fourteen built-in schemes live at the bottom, transcribed from the
-// reference program's own examples rather than invented here.
+// The fourteen built-in schemes live at the bottom, documented in the
+// reference engine's own examples rather than invented here.
 // ------------------------------------------------------------------
 #include "mb_internal.h"
 
@@ -119,7 +119,7 @@ void mipSample(const Mip& m, double x, double half, double& r, double& g,
  *   mode 1  c = ramp(iter / cycle mod 1)          <- gradient handles
  *
  * followed by  saturation -> contrast -> gamma -> gain -> brightness ->
- * hue-preserving normalise.  The normalise is the reference program's own
+ * hue-preserving normalise.  The normalise is the reference engine's own
  * `m = max(c); if (m > 1) c /= m` and is the reason a bright scheme never
  * turns into flat white blobs: dividing by the largest component keeps the
  * hue and the relative contrast, where a per-channel clamp would not.
@@ -357,8 +357,8 @@ inline void putRGB(uint8_t* o, double r, double g, double b) {  o[0] = (uint8_t)
  * shifted the count by up to half an iteration — spatially irregular, which is
  * exactly the source of the extra colour edges that appear at depth. */
 double smoothIteration(int n, double m2, double rel) {
-  /* Exactly the reference's form, from the disassembly of smoothiter_double
-   * (004c98e0.c:39-45):
+  /* Exactly the reference's form, from the reference notes on smoothiter_double
+   * (design-note.c:39-45):
    *     log2(log2(|z|^2) * K)      with K folded into the palette phase
    *     smooth = iter - that
    * The |z|^2 handed in is the reference's |Z|^2 plus the deviation, so the
@@ -481,7 +481,7 @@ void shade(uint8_t* o, const Ctx& g, int n, double m2, double rel,
  * which leaves it a DC term.
  *
  * `cycleRef` is the number of iterations one unit of the palette argument
- * covers.  It is 1.0 for every scheme transcribed from the reference, because
+ * covers.  It is 1.0 for every scheme documented in the reference, because
  * the reference feeds `iter` straight into pal() — `iter*frequency` is the
  * phase, in radians, with no extra scaling.  Only the app's own "Ice" scheme
  * keeps a larger figure, which is just how its look was tuned.
@@ -540,7 +540,7 @@ void initPalettes() {
     g_palettes[0] = makePalette(ice, 5, 0.55f, 0.14f, 12.7f);
   }
 
-  /* 1 — examples/Retinamandelbrot Example 2.json.  This is the scheme the
+  /* 1 — examples/Example 2.json.  This is the scheme the
    * reference screenshots were taken with: three white components for the
    * field, then yellow / cyan / magenta at higher frequency for the fine
    * structure. */
@@ -557,7 +557,7 @@ void initPalettes() {
     g_palettes[1] = makePalette(e2, 6, 1.40f, 0.55f);
   }
 
-  /* 2 — examples/Retinamandelbrot Example 10.json */
+  /* 2 — examples/Example 10.json */
   {
     static const PaletteColor e10[] = {
         {0.0f, 0.0f, 0.0f, -1.8250487f, 0.0f},
@@ -569,7 +569,7 @@ void initPalettes() {
     g_palettes[2] = makePalette(e10, 6, 1.00f, 0.55f);
   }
 
-  /* 3 — examples/Retinamandelbrot Example 11.json: a single green sinusoid
+  /* 3 — examples/Example 11.json: a single green sinusoid
    * stretched by a 1.4 brightness, i.e. a narrow, high-contrast band. */
   {
     static const PaletteColor e11[] = {
@@ -617,7 +617,7 @@ void initPalettes() {
    * fitted or normalised by zoom — pal() is exactly the reference's pal().
    */
 
-  /* 7 — Retinamandelbrot Example 3 / Retinajulia Example 1: pure RGB, the
+  /* 7 — Example 3 / Retinajulia Example 1: pure RGB, the
    *     oldest scheme in the set.  Red and green run fast, blue is almost a
    *     DC term, so the field is a red/green ribbon over a blue floor. */
   {
@@ -662,7 +662,7 @@ void initPalettes() {
     g_palettes[11] = makePalette(clk, 2, 1.0f, 0.498f);
   }
 
-  /* 12 — Retinamandelbrot Example 14/15: the six-term scheme every deep
+  /* 12 — Example 14/15: the six-term scheme every deep
    *      example ships with.  Three dim grey terms carry the wide field,
    *      three fast ones (2.4 / 3.5 / 2.1 iterations per cycle) draw the
    *      fine rainbow filigree.  At depth the fast terms are what you see. */
@@ -677,7 +677,7 @@ void initPalettes() {
     g_palettes[12] = makePalette(sp, 6, 1.02f, 0.45f);
   }
 
-  /* 13 — Retinamandelbrot Example 7: nine grey terms at walking pace with one
+  /* 13 — Example 7: nine grey terms at walking pace with one
    *      magenta accent.  Reads as engraved metal, not as neon. */
   {
     static const PaletteColor gr[] = {

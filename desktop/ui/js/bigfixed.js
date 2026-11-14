@@ -246,8 +246,8 @@ export function requiredBits(pixelSize) {
  *  HUD, the coordinate arithmetic and the renderer were three different widths
  *  that drifted apart as the iteration budget grew.  One formula, one answer. */
 export function requiredBitsFromLog2(log2ps, maxIter = 0) {
-  /* The recovered program sizes its working width in *decimal* digits:
-   *   digits = depth10 + 50      (04_/配置与示例; `mset plan` matches)
+  /* The reference engine sizes its working width in *decimal* digits:
+   *   digits = depth10 + 50      (配置与示例; `mset plan` matches)
    *   bits   = digits * log2(10)
    * This function used `-log2ps + 64`, which treats the base-2 exponent as a
    * bit count and lands 166 bits short.  The desktop core was fixed the same

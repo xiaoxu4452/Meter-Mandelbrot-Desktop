@@ -4,7 +4,7 @@ import { REFERENCE_COLORSCHEMES } from './colorschemes-data.js';
  * gpu.js — the shading half of the renderer.
  *
  * The core computes an *iteration field*; this module turns that field into
- * pixels with GLSL.  That is the split the reference program uses, and it is
+ * pixels with GLSL.  That is the split the reference engine uses, and it is
  * the reason its colour handling can be arbitrary: `color(Data)` in
  * `core_fractal.glsl` is a real shader fragment, and every preset shipped with
  * the program carries its own source in `parameters.colorscheme.codegl`.
@@ -220,7 +220,7 @@ export function writeColorschemes(dict) {
  *
  * Two of those tests are wider than one bit (6 and 0x60), and reproducing the
  * test rather than tidying it into a single flag is what makes a preset's own
- * `channels` number mean the same thing it meant in the original program: a
+ * `channels` number mean the same thing it meant in the reference engine: a
  * preset that declares 2 or 4 also gets `data.value`, and one that declares
  * 32 or 64 also gets `data.derivative`.  The bitfield is a contract: a scheme
  * that reads a channel it did not declare does not compile, exactly as in the
@@ -503,8 +503,8 @@ void main()
 
 /* ---- the schemes ---------------------------------------------------------
  *
- * The first four are the reference's own `color()` bodies, transcribed from
- * 02_还原的着色器源码/complete/*.frag.  They run unchanged because the field
+ * The first four are the reference's own `color()` bodies, documented in
+ * 历史着色器实验快照.  They run unchanged because the field
  * carries exactly the channels they read.
  * ------------------------------------------------------------------------*/
 export const BUILTIN = {

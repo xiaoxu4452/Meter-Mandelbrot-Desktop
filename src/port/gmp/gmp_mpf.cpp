@@ -1,8 +1,8 @@
 // GMP seed: mpf arithmetic that the engine's high-precision path calls.
 //
-// 0054b7b0 __gmpf_add, 0054b708 __gmpf_set_ui and 0054b740 __gmpf_mul are
-// IAT thunks into libgmp-10; 004f8470 mpf_hi / 004f84e0 mpf_lo are the
-// engine-authored bridges used by the double-precision preview path.
+// __gmpf_add, __gmpf_set_ui and __gmpf_mul are imported from libgmp-10;
+// mpf_hi / mpf_lo are the engine-authored bridges used by the
+// double-precision preview path.
 //
 // Semantics reproduced here: destination precision truncates the result
 // (towards zero), the destination may alias either source, and mpf_hi/mpf_lo

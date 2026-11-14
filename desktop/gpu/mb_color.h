@@ -49,7 +49,7 @@ constexpr int kMaxLevels = 65536;
 constexpr int kQuantMax = 1023;  // 10-bit code space
 
 enum class Mode {
-  Additive,   // the reference program's pal(): sum of sinusoids
+  Additive,   // the reference engine's pal(): sum of sinusoids
   Gradient,   // smoothstep between author-authored stops
   FullGamut,  // OKLCH full hue circle, chroma at the sRGB boundary
   Spectral,   // visible spectrum 380..780 nm

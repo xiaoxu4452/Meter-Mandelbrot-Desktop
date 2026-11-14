@@ -1,6 +1,6 @@
-// Viewport — the recovered _VIEWPORT model (getzoomdelta / recalc).
+// Viewport — the reference _VIEWPORT model (getzoomdelta / recalc).
 //
-// The original binary keeps the absolute centre and zoom in a viewport
+// The reference engine keeps the absolute centre and zoom in a viewport
 // object, and derives two scales from it:
 //   * precision  = guard digits proportional to log10(zoom)
 //   * delta      = HFLOAT radius covering the frame, clamped to +/-2^25

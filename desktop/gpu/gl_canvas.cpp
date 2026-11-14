@@ -4,8 +4,8 @@
 // Two passes per commit:
 //
 //   shade   field texture (RGBA32F)  ->  GL_RGB10_A2 framebuffer
-//           The colour stage is the reference program's own `pal()` plus the
-//           tone stage, transcribed from core/mb_palette.cpp so the desktop
+//           The colour stage is the reference engine's own `pal()` plus the
+//           tone stage, documented in core/mb_palette.cpp so the desktop
 //           and the CPU renderer agree on what a palette means.
 //
 //   present GL_RGB10_A2 texture      ->  window

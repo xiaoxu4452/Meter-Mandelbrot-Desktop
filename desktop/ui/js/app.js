@@ -178,7 +178,7 @@ const prevCtx = prevCanvas.getContext('2d');
 /* ---------------- GPU shading surface ----------------
  *
  * The core sends the iteration field; this surface turns it into pixels with
- * the reference program's own GLSL.  It is a separate canvas rather than a
+ * the reference engine's own GLSL.  It is a separate canvas rather than a
  * second context on `#fractal` because the 2D context is how the CPU path,
  * the snapshot and the export all work — drawing through WebGL into the same
  * element would break every one of them.
@@ -639,7 +639,7 @@ function wgpuView() {
      * depth the same skip is what paints the large black contour arcs across
      * the frame — the block's affine map stops matching the true orbit long
      * before its residual test notices, and every block boundary shows up as a
-     * smooth curved band.  The recovered renderer only uses its series while
+     * smooth curved band.  The reference renderer only uses its series while
      * `delta` is inside `delta_max`; the honest equivalent here is to switch
      * it off once the frame is deep, where it saves <2 % of the iterations. */
     /* Series/bilinear approximation: OFF.
@@ -911,13 +911,13 @@ function autoIterFor(depth) {
 }
 
 /* ---------------- Observed iteration budget ----------------
- * `07_反汇编与伪代码` has NO maxiter = f(zoom): `canvas->maxiter` is the
- * largest iteration actually OBSERVED.  The transcribed predicates live in
+ * `公开算法文献` has NO maxiter = f(zoom): `canvas->maxiter` is the
+ * largest iteration actually OBSERVED.  The documented predicates live in
  * the desktop core's mb_core.h; these are the same constants:
- *   0046f630.c:104-114  known*3+3000 / observed*5 / 0x2aaaa2da sentinel
- *   0046f630.c:197      vertex recalc gate known*3+1000
- *   00498d00.c:295      checkcanvas budget observed*5+10000
- *   00429d50.c:185      idle_maxiter 0x7fffffff
+ *   design-note.c:104-114  known*3+3000 / observed*5 / 0x2aaaa2da sentinel
+ *   design-note.c:197      vertex recalc gate known*3+1000
+ *   design-note.c:295      checkcanvas budget observed*5+10000
+ *   design-note.c:185      idle_maxiter 0x7fffffff
  * autoIterFor() above stays as the FIRST guess for a view with no history.
  * A completed frame whose pixels really reached the cap then raises the
  * ceiling for the next pass.  Deliberately no automatic repaint: a repaint
@@ -975,7 +975,7 @@ function noteFrameObservation(cap, hi, bounded, starved) {
   if (hi > 0) rememberObservedDepth(depthNow(), hi | 0);
   /* "Exhausted" means pixels stopped AT the ceiling.  A backend that reports a
    * max escape well above the ceiling is reporting a different quantity (the
-   * reconstructed core counts interior steps too), not exhaustion; trusting it
+   * C++ core counts interior steps too), not exhaustion; trusting it
    * multiplied the home view's budget from 1626 to 6498 and made the first
    * full-resolution frame four times slower.
    *
@@ -1407,7 +1407,7 @@ function fmtCycle(c) {
  * of a scheme: the JSON also carries its UniformsColor table, the neutral
  * values of the `params.param[]` sliders, the two region brightnesses and a
  * samples count.  All of them have to travel together or the same codegl
- * paints a different picture here than it did in the original program. */
+ * paints a different picture here than it did in the reference engine. */
 /** Move the view to the coordinates an official scheme was authored at. */
 function applySchemeView(v) {
   if (!v || v.re == null || v.im == null) return false;
@@ -1613,7 +1613,7 @@ function installScheme(id) {
   state.schemeParams = s.params.slice();
   /* The scheme library stores the file's literal (log-domain) tuples.
    * loadParams converts them with exp(f_i + F) / init_i + I before pal()
-   * ever sees them (00546630.c:79/:87); do it once here. */
+   * ever sees them (design-note.c:79/:87); do it once here. */
   state.schemeColors = shaderTerms(s.colors.map(c => ({
     r: c[0], g: c[1], b: c[2], frequency: c[3], initial: c[4]
   })), s.gf, s.gi);
@@ -2014,9 +2014,9 @@ function scaleSpan(sp, k) {
   return { m, e };
 }
 
-/* Depth -> the largest escape count actually observed near it.  The recovered
+/* Depth -> the largest escape count actually observed near it.  The reference
  * program has no maxiter = f(zoom); `canvas->maxiter` is what pixels really
- * did (0046f630.c).  The depth formula below is only a first guess, and at
+ * did (design-note.c).  The depth formula below is only a first guess, and at
  * 2^-66 it guesses 38 089 where the frame really escapes at 11 441 — three
  * times the work for the same picture.  Remembering the observation turns the
  * next visit to that depth into a correctly-sized frame. */
@@ -2075,7 +2075,7 @@ function autoIterNow() {
  */
 function effectiveIterTotal() {
   const auto = autoIterNow();
-  /* The observed ceiling from completed frames (0046f630.c) takes over from
+  /* The observed ceiling from completed frames (design-note.c) takes over from
    * the depth-derived first guess once real pixels have proved the budget too
    * tight.  It never lowers a manual count. */
   const obs = observedIterCap();
@@ -2088,8 +2088,8 @@ function effectiveIterTotal() {
 function effectiveCycle() {
   if (!state.cycleAuto) return Math.max(2, state.cycle);
   const it = effectiveIterTotal();
-  /* Ten colour cycles across the frame, which is what the recovered program
-   * does (`out/src/render.cpp effective_palette_scale()`).
+  /* Ten colour cycles across the frame, which is what the reference engine
+   * does (`the renderer's effective_palette_scale()`).
    *
    * This函数 used to return `6 * log2(it)` -- "60-120 bands at every zoom
    * level" -- on the theory that more bands show more structure.  They do not:
@@ -2248,7 +2248,7 @@ function paintFrame(f, scale) {
  * rather than pixels.  Everything after that is one draw call.
  *
  * Why this is worth a second pipeline: the field does not depend on the
- * colours, so a scheme change re-runs only the shader — the reference program
+ * colours, so a scheme change re-runs only the shader — the reference engine
  * behaves the same way, which is why its palette sliders are instant no matter
  * how deep the view is.  It is also the only route to the presets whose whole
  * look is a fragment shader.
@@ -2257,8 +2257,8 @@ function paintFrame(f, scale) {
  * ----------------------------------------------------------------*/
 /* ---------------- Field memory ----------------
  * The reference keeps its computed AREA / PREPIXELS around and only
- * recomputes what a new view actually invalidates (00427ab0.c:152,
- * 00498570.c:88-107).  Here the equivalent is the iteration field itself:
+ * recomputes what a new view actually invalidates (design-note.c:152,
+ * design-note.c:88-107).  Here the equivalent is the iteration field itself:
  * it is a property of the *view*, never of the colours.  Remembering the last
  * few finished fields means a palette edit, a tone change, a zoom back out or
  * a return to a preset costs one shader draw instead of another full
@@ -2486,7 +2486,7 @@ function gpuPass(vId, plan, done, planList) {
       julia: state.spec.mode === 'j',
       inverse: !!state.inverse,
       /* The reference's own clock.  A scheme that reads it animates; one that
-       * does not sees a constant, exactly as in the original program. */
+       * does not sees a constant, exactly as in the reference engine. */
       time: schemeTime()
     };
     const d0 = performance.now();
@@ -2876,7 +2876,7 @@ function renderPlan(plan, onDone) {
  * Live passes.
  *
  * A gesture transforms the committed frame and nothing else: the real pass is
- * issued once, 360 ms after the wheel stops (07f0583c).  This block is the
+ * issued once, 360 ms after the wheel stops (wheelnav).  This block is the
  * alternative the desktop carried for a while — ONE cheap pass at a time on
  * the current view, never overlapping another — and it is kept, unused by the
  * wheel, for the cases that need a sharp frame mid-gesture.  The pass is
@@ -2903,7 +2903,7 @@ function livePlan() {
 
 /** Render one live pass, unless the previous one is still running.
  *
- * Nothing calls this after the wheel moved to the 07f0583c model; it is here
+ * Nothing calls this after the wheel moved to the wheelnav model; it is here
  * for a caller that wants a sharp frame mid-gesture.  There is deliberately no
  * queue: a pass that arrives while another is in flight is dropped, because
  * queueing them is exactly what made the page-side pass latency climb
@@ -2987,7 +2987,7 @@ function scheduleZoomRender(immediate) {
     renderNow();
     return;
   }
-  /* 07f0583c: one quiet timer, 360 ms.  No pass while the wheel is still
+  /* wheelnav: one quiet timer, 360 ms.  No pass while the wheel is still
    * moving — a coarse pass under a stretched snapshot is the flicker. */
   clearTimeout(wheelTimer);
   wheelTimer = setTimeout(() => { wheelTimer = 0; renderNow(); }, 360);
@@ -3140,7 +3140,7 @@ function screenToPlaneHi(clientX, clientY) {
 
 /** Absolute plane coordinate under a client-space point.
  *  The reference's Julia preview re-seeds from the point under the mouse
- *  (00405590.c:126-137); this is that point, using the same rotated
+ *  (design-note.c:126-137); this is that point, using the same rotated
  *  screen-to-plane matrix every gesture already goes through.
  *
  *  Kept as the double-valued form for the preview shader, which works at a
@@ -3452,7 +3452,7 @@ function commitPan(base, dx, dy) {
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  /* The 07f0583c web handler: one notch is one exact zoom step about the
+  /* The wheelnav web handler: one notch is one exact zoom step about the
    * pointer.  No velocity, no coasting, no per-tick re-application. */
   const { x, y } = pointerPos(e);
   const factor = Math.exp(clamp(e.deltaY, -240, 240) * 0.0035);
@@ -3489,9 +3489,9 @@ canvas.addEventListener('dblclick', (e) => {
  * starting state on every pointer event and then let the shader redraw — the
  * old code only transformed a snapshot, which is why the picture did not
  * follow the fingers on the GPU path. */
-/** Zoom about a screen point with the recovered viewport rule.
+/** Zoom about a screen point with the reference viewport rule.
  *
- * C:/Users/harve/Desktop/mande/out/src/app/app_state.cpp
+ * the viewport model
  * AppState::zoom_at_pixel(x, y, factor):
  *      before = vp.point_at(x, y);
  *      vp.zoom_by(factor);
@@ -3519,7 +3519,7 @@ function applyZoomAt(px, py, factor) {
   normalizeSpan();
   /* centre += before - after, evaluated as ONE product.
    *
-   * The recovered program does two point_at() calls and subtracts them in
+   * The reference engine does two point_at() calls and subtracts them in
    * its own arbitrary-precision type.  Both forms were measured to be exact
    * in the page's fixed point (200 steps ×0.98 at 2^-3000 drift 0.0 px), so
    * this is not where a deck drifts; the single product is simply fewer
@@ -3579,9 +3579,9 @@ function normalizeSpan() {
 }
 
 /* ---------------- Wheel navigation ----------------
- * 07f0583c's model, and nothing else: a notch is one exact zoom step about the
+ * wheelnav's model, and nothing else: a notch is one exact zoom step about the
  * pointer (applyZoomAt), the committed frame is transformed for feedback, and
- * the real pass is debounced by 360 ms.  The recovered nav_timer velocity
+ * the real pass is debounced by 360 ms.  The reference nav_timer velocity
  * integrator that used to live here re-applied the step on every display
  * frame; each re-application measured its anchor against the previous scale,
  * so a burst accumulated a drift (measured: 0.78 px per notch, 52 px over
@@ -3803,7 +3803,7 @@ function syncIterUi() {
   $('in-iter').value = it;
 }
 
-/* Rotation travels in radians (the reference program's unit, and what the
+/* Rotation travels in radians (the reference engine's unit, and what the
  * kernel's screenDelta() consumes); the console speaks degrees.  One place
  * owns the conversion so a preset, an animation keyframe and the slider all
  * leave the two controls showing the same number as the picture. */
@@ -3826,7 +3826,7 @@ function fillSelects() {
   /* Two genuinely different drawing logics, so keep them apart in the list:
    * a cyclic ramp changes colour at one fixed rate everywhere, while an
    * additive scheme sums several frequencies — a slow one lays down the large
-   * soft fields, fast ones resolve the filigree.  The reference program's
+   * soft fields, fast ones resolve the filigree.  The reference engine's
    * memorable deep views all come from the second family. */
   const opt = p => `<option value="${p.id}">${getLang() === 'en' ? p.en : p.zh}</option>`;
   const ramp = PALETTE_LIST.filter(p => !paletteColors(p.id));
@@ -4965,7 +4965,7 @@ function pumpThumbs() {
 }
 
 /* ------------------------------------------------------------------
- * Reference presets (the original program's own JSON).
+ * Reference presets (the reference engine's own JSON).
  *
  * A file describes position, zoom, rotation, the Julia seed, the additive
  * `colors` table, the brightness pair — and, for the presets whose whole look
@@ -5393,7 +5393,7 @@ window.addEventListener('mbPreset', (e) => {
 });
 
 /* ---- appdata\mandelbrot.json -------------------------------------------
- * The reference program's parameter file (winparameters.html).  The shell
+ * The reference engine's parameter file (winparameters.html).  The shell
  * parses it, clamps every key to the documented range/defaults, applies
  * `nthread` before the engine starts, and sends the effective values here.
  * Only the keys with a real counterpart in this port change anything; the rest
@@ -5513,7 +5513,7 @@ function exportPresetFile() {
 /* ------------------------------------------------------------------
  * Animation playback.
  *
- * Some presets carry a keyframe list (the reference program's own files can
+ * Some presets carry a keyframe list (the reference engine's own files can
  * describe a move as well as a view).  Playing one walks the view along those
  * keys and asks for a frame at a fixed cadence; the renderer's progressive
  * path already drops stale frames, so a slow frame simply means a lower frame
@@ -6614,7 +6614,7 @@ function bindUi() {
     const k = e.key;
     /* --- keyboard navigation: arrows pan by 1/8 view, z/x (or PgUp/PgDn) zoom --- */
     const step = Math.max(8, Math.round(Math.min(canvas.width, canvas.height) / 8));
-    /* Preset files: the reference program's own JSON.  Ctrl+O / Ctrl+S are the
+    /* Preset files: the reference engine's own JSON.  Ctrl+O / Ctrl+S are the
      * pair every editor uses, and they have to be handled before the plain-key
      * block below swallows the modifier. */
     if ((e.ctrlKey || e.metaKey) && (k === 'o' || k === 'O')) {
@@ -6662,7 +6662,7 @@ function bindUi() {
     if (k === 'z' || k === 'Z' || k === 'PageUp') { e.preventDefault(); zoomAt(canvas.width / 2, canvas.height / 2, 0.5, true); return; }
     if (k === 'x' || k === 'X' || k === 'PageDown') { e.preventDefault(); zoomAt(canvas.width / 2, canvas.height / 2, 2, true); return; }
     if (k === 'Home' || k === '0') { e.preventDefault(); applyMode(state.spec.mode); return; }
-    /* --- the reference program's numeric keypad (winapp.html) --------------
+    /* --- the reference engine's numeric keypad (winapp.html) --------------
      * 2/4/6/8 pan, 1/3 zoom out/in, 7/9 rotate, 5 stop.  Numpad keys report the
      * same `e.key` as the top row, so both work.  Only "0" was already taken
      * (home view), so nothing above is overridden. */
@@ -7095,7 +7095,7 @@ function boot() {
   resizeCanvas();
   initMainGpu();
 
-  /* The reference's second viewport (00406070.c) is brought up last so it can
+  /* The reference's second viewport (design-note.c) is brought up last so it can
    * borrow the first pass's compiled scheme and Params. */
   juliaView = initJuliaView({
     mainCanvas: canvas,
@@ -7136,7 +7136,7 @@ function boot() {
                   /* Measurement hook for the frame-time breakdown: one `[seg]`
                    * log line per shaded pass (see segReport). */
                   seg: (on) => { segOn = !!on; return segOn; },
-                  /* Observed-iteration state (0046f630.c).  iterProbe feeds a
+                  /* Observed-iteration state (design-note.c).  iterProbe feeds a
                    * synthetic completed frame so the budget rule can be
                    * checked without waiting for a real exhausted pass. */
                   iter: () => ({

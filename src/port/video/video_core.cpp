@@ -1,9 +1,9 @@
 // FFmpeg seed: format lookup, output-context allocation and AVIO open/close.
 //
-// 0054ba10 av_guess_format, 0054b9f8 avformat_alloc_output_context2,
-// 0054b9d0 avio_open and 0054b9d8 avio_close are IAT thunks into
-// avformat/avutil.  The replacements keep the object model and the error
-// conventions (negative return code on failure) while using our own file IO.
+// av_guess_format, avformat_alloc_output_context2, avio_open and avio_close
+// come from avformat/avutil.  The replacements keep the object model and the
+// error conventions (negative return code on failure) while using our own
+// file IO.
 
 #include "video.hpp"
 #include "../port.hpp"

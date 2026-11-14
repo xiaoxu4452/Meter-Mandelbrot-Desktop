@@ -1,13 +1,13 @@
-// app.ui seed: the button/flag actions that the recovered callbacks perform.
+// app.ui seed: the button / flag actions behind the UI callbacks.
 //
-// Reference pseudocode (07_反汇编与伪代码/Ghidra/full_pseudocode):
-//   004015d0 button0        mode != 6 ? changemode(6) : changemode(1)
-//   004016a0 toggleinvert   invert = !invert
-//   004016c0 togglehighres  highres = !highres; nav_flags = highres*8 +
-//                           (lock ? 0x3000 : 0x2000); changemode(1)
-//   00406430 resetbutton    reset(); ntouches = 1
-//   00406070 reset          drop buffers, clear caches, return to the default
-//                           viewport and redraw
+// Actions and their state transitions:
+//   button0        mode != 6 ? changemode(6) : changemode(1)
+//   toggleinvert   invert = !invert
+//   togglehighres  highres = !highres; nav_flags = highres*8 +
+//                  (lock ? 0x3000 : 0x2000); changemode(1)
+//   resetbutton    reset(); ntouches = 1
+//   reset          drop buffers, clear caches, return to the default
+//                  viewport and redraw
 //
 // Each function keeps the original's ordering: flip the flag, recompute the
 // derived state, then request a redraw / mode change.
@@ -39,7 +39,7 @@ void toggleinvert(AppState& app, int /*param*/) {
 void togglehighres(AppState& app, int /*param*/) {
     app.highres = !app.highres;
     // nav_flags carries the render resolution class in bits 3..4 and the
-    // locked state in bit 12, exactly as the recovered assignment shows.
+    // locked state in bit 12, exactly as the reference assignment shows.
     int flags = (app.highres ? 8 : 0) + (app.lock ? 0x3000 : 0x2000);
     app.nav_flags = flags;
     app.nav_flags_ex = flags;

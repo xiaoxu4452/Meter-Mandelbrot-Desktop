@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------
 // mb_internal.h — everything the renderer's own translation units share.
 //
-// The pipeline is split the way the reference program is split, one file per
+// The pipeline is split the way the reference engine is split, one file per
 // stage, and this header is the seam between them:
 //
 //   mb_orbit.cpp    reference orbit, Taylor coefficients, anchor probing
@@ -328,14 +328,14 @@ struct Ctx {
    * precision demand and the reference orbit are all unaffected.  It only has
    * to be applied where a screen pixel becomes a plane offset, which is why
    * that conversion lives in one function below instead of being written out
-   * at each kernel.  The reference program stores the angle in every one of
+   * at each kernel.  The reference engine stores the angle in every one of
    * its shipped presets; without it an imported view comes back turned. */
   double rotC = 1.0, rotS = 0.0;
 
   /* ---- orbit traps ----
    *
    * A trap is a property of the *orbit*, not of the escape count, so it cannot
-   * be recovered from the field the colour stage already has.  The kernel
+   * be derived from the field the colour stage already has.  The kernel
    * accumulates it while it is walking the orbit anyway, which costs three
    * floating-point operations per iteration and nothing at all when off.
    *

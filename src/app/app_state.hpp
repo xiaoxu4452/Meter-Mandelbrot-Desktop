@@ -1,15 +1,13 @@
 // Headless application model.
 //
-// The original is a Win32 GUI program whose globals are visible in the
-// pseudocode: `mode`, `ntouches`, `highres`, `lock`, `debuginfo`, `juliamode`,
-// the two viewports `vp`/`vpex` with their `nav_flags`, the palette state and
-// the render context.  This header turns those globals into one explicit
-// object so every recovered UI function can be called from tests without a
-// window, a message loop or a GPU.
+// The model groups the engine's state — `mode`, `ntouches`, `highres`, `lock`,
+// `debuginfo`, `juliamode`, the two viewports `vp`/`vpex` with their
+// `nav_flags`, the palette state and the render context — into one explicit
+// object, so every UI function can be called from tests without a window, a
+// message loop or a GPU.
 //
-// Long-tail state that only one recovered function needs lives in `params`
-// (numeric) and `strings` (text), so the model does not have to grow a field
-// per Ghidra local.
+// Long-tail state used by a single function lives in `params` (numeric) and
+// `strings` (text), so the model does not have to grow a field per variable.
 
 #pragma once
 
@@ -26,10 +24,10 @@
 
 namespace mset::app {
 
-// `mode` states recovered from changemode/button0: 1 is the idle/normal
+// `mode` states derived from changemode/button0: 1 is the idle/normal
 // state every action returns to; 6 is the toggled overlay state button0
 // switches into.  The remaining values are reachable through changemode and
-// are kept as plain ints so a recovered call site keeps its literal.
+// are kept as plain ints so a reference call site keeps its literal.
 inline constexpr int kModeStartup = 0;
 inline constexpr int kModeNormal = 1;
 inline constexpr int kModeBusy = 2;
@@ -66,7 +64,7 @@ struct VideoState {
 };
 
 struct AppState {
-    // --- globals recovered from the pseudocode -----------------------------
+    // --- globals derived from the design notes -----------------------------
     int mode = kModeNormal;
     int ntouches = 1;
     int juliamode = 0;          // 2 selects the secondary viewport (vpex)

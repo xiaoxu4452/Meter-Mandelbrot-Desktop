@@ -1,6 +1,6 @@
 // B1 — the positioning model, checked in isolation.
 //
-// The whole interaction contract is three lines (see out/src/app/app_state.cpp):
+// The whole interaction contract is three lines (see the viewport model):
 //
 //     before = view.point_at(x, y)
 //     view.zoom_by(factor)

@@ -3,7 +3,7 @@
 // tests/test_main.cpp owns the counters and the built-in algorithm tests.
 // Port-layer and family tests are separate translation units: each registers
 // itself with MSET_TEST(name) and runs after the built-ins, so adding
-// coverage for a new recovered family never edits test_main.cpp.
+// coverage for a new test family never edits test_main.cpp.
 
 #pragma once
 

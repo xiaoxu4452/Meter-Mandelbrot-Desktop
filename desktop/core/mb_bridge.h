@@ -18,7 +18,7 @@
 //      orbit is therefore two strings per step: Re(z_n), Im(z_n), z_0 = 0.
 //
 // Precision rule: this is the Boost-side counterpart of the rule recorded
-// in `07_反汇编与伪代码` for `initcanvas_hfloat`: depth + 0x40, i.e. 64
+// in `公开算法文献` for `initcanvas_hfloat`: depth + 0x40, i.e. 64
 // guard bits above the physical bit depth of the view.  bridgeTierForBits()
 // applies the same clamp as mbhp::bitsForDepth() and then picks the smallest
 // compile-time cpp_bin_float tier (gpu/mb_hp.h: 50/100/200/350/700 digits)

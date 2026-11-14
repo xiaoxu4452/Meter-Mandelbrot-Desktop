@@ -3,7 +3,7 @@
 //
 // A preset is a file, not a row in a compiled table: the folder is what the
 // user can back up, edit in a text editor, hand to someone else, or point the
-// reference program at.  The shell owns the folder because a WebView2 page
+// reference engine at.  The shell owns the folder because a WebView2 page
 // cannot read it, and it hands the page two things:
 //
 //   IndexJson()  a compact description of every file, enough to draw the grid

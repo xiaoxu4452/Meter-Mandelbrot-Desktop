@@ -1,10 +1,10 @@
 // ---------------------------------------------------------------------------
-// mset_backend.h - bridge from the shell's tile jobs to the reconstructed core.
+// mset_backend.h - bridge from the shell's tile jobs to the C++ core.
 //
 // The shell keeps its framework: WebView2 owns the panels, the page decides
 // which tiles to render, the D3D11 child window presents them.  Only the
-// pixel producer changes: this module renders with the reconstructed
-// Retinamandelbrot core (native/mset) instead of the old stitched engine.
+// pixel producer changes: this module renders with the C++
+// core (native/mset) instead of the old stitched engine.
 //
 // It exposes plain types on purpose.  The core has its own Image / Palette /
 // RGB and a global precision setting; none of that leaks into host.cpp.

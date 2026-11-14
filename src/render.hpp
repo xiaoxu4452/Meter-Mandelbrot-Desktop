@@ -58,7 +58,7 @@ struct RenderRequest {
     std::string palette = "rainbow";
     ColorMode color_mode = ColorMode::Smooth;
     double span = 3.0;             // complex width at zoom = 1
-    // The recovered shader feeds raw iteration counts to pal(); at deep zoom
+    // The reference shader feeds raw iteration counts to pal(); at deep zoom
     // that cycles thousands of times.  A positive value is used literally;
     // 0 (default) selects an automatic scale by zoom depth.
     double palette_scale = 0.0;
@@ -69,7 +69,7 @@ struct RenderRequest {
     bool interior_palette = false; // original iter<0 colouring for interior points
 
     // ---- integration hooks (consumed by the desktop shell) -----------------
-    // View rotation.  The recovered program rotates the whole view plane about
+    // View rotation.  The reference engine rotates the whole view plane about
     // the frame centre; the renderer here maps pixels to plane offsets, so the
     // rotation belongs in that map and nowhere else.  Identity by default, and
     // the identity path is bit-for-bit the unrotated code.

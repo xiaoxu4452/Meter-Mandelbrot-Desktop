@@ -44,8 +44,8 @@ const outFile = path.join(root, 'src', 'ui', 'js', 'sets-data.js');
 
 /* ---- colour recipes ------------------------------------------------------
  * The reference's UniformsColor table is (r, g, b, frequency, initial) with the
- * frequency in the *log* domain: loadParams uploads exp(f + F) and init + I
- * (00546630.c:79/:87).  Every table below is written in that same literal form,
+ * frequency in the *log* domain: loadParams uploads exp(f + F) and init + I.
+ * Every table below is written in that same literal form,
  * exactly as its example JSONs do, so the page's shaderTerms() converts them
  * the same way — no second convention, no re-tuning.
  * ----------------------------------------------------------------------- */
@@ -152,8 +152,8 @@ function spanOf(zoomStr) {
   return { mant, exp };
 }
 /* The reference stores zoom as a decimal mantissa/exponent pair, e.g.
- * "0.100000e5" for 10^4.  Keeping its spelling means an exported card reads
- * the same as a file the original program wrote. */
+ * "0.100000e5" for 10^4.  Keeping its spelling means an exported card
+ * reads the same as a file the engine wrote. */
 function refZoom(z) {
   if (!isFinite(z) || z <= 0) return '0.100000e0';
   let e = Math.floor(Math.log10(z));

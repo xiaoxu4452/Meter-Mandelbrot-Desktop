@@ -772,7 +772,7 @@ fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
    * CPU frame carry the same colours.  LUT entries are already display-referred,
    * so no exposure or gamma stage is applied to them. */
   if (S.useLut == 1u) {
-    /* out/src/render.cpp effective_palette_scale(): ten colour cycles across
+    /* the renderer's effective_palette_scale(): ten colour cycles across
      * the frame's whole iteration range.  S.cycle is maxIter/10, so the frame
      * never wraps more than ten times and a deep view -- whose escapes are all
      * within a few per cent of each other -- stays smooth instead of being

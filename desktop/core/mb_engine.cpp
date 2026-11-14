@@ -61,11 +61,11 @@ static uint64_t appearanceKey(const Request& q, const Palette& P,
   return h;
 }
 
-/* The reference program has no maxiter = f(zoom): none of its 25 example
- * JSONs carries an iteration key, and the disassembly contains no expression
+/* The reference engine has no maxiter = f(zoom): none of its 25 example
+ * JSONs carries an iteration key, and the reference material contains no expression
  * linking the pixel scale to the iteration limit.  What it does have is a
- * *canvas observation* loop.  These constants are transcribed verbatim from
- * `07_反汇编与伪代码/Ghidra/full_pseudocode/0046f630.c`
+ * *canvas observation* loop.  These constants are documented verbatim in
+ * `算法设计笔记（迭代策略）`
  * (processcanvasfinite_hfloat):
  *
  *   :81-99   uVar17 = max(iter) over the four corner vertices that are known
@@ -78,9 +78,9 @@ static uint64_t appearanceKey(const Request& q, const Palette& P,
  *
  * `ITER maxiter` is then passed to calciter*() as the per-pixel loop bound
  * (`while (i < maxiter)`).  `canvas->maxiter` is *observed state*, not a
- * user setting.  initcanvas_hfloat (0044e970.c:142,147,245) seeds it with
+ * user setting.  initcanvas_hfloat (design-note.c:142,147,245) seeds it with
  * 0 / 200000000 / 10000000 depending on the mode, and worker_move
- * (00429d50.c:185) sets idle_maxiter = 0x7fffffff for idle continuation. */
+ * (design-note.c:185) sets idle_maxiter = 0x7fffffff for idle continuation. */
 /* The observed-iteration constants and the four original predicates now live
  * in mb_core.h, inline beside pixelScaleLog2(): the CPU engine, the OpenCL
  * host glue and mb_libcheck must agree on every one of them.  Only pass-flow
@@ -95,7 +95,7 @@ constexpr int kMaxIdlePasses = 3;
  * reference orbit was computed at a width that could not resolve the pixel,
  * and the frame came out flat or covered in false interior instead of
  * failing loudly.  1.2 Mbit is 361 000 decimal digits, i.e. a 10^300000
- * zoom with the 50-digit guard the recovered program uses.  MB_MAXBITS
+ * zoom with the 50-digit guard the reference engine uses.  MB_MAXBITS
  * lowers it for load tests. */
 static int maxWorkingBits() {
   static const int v = [] {
@@ -108,8 +108,8 @@ static int maxWorkingBits() {
 }
 
 int requiredBits(double psLog2, int maxIter) {
-  /* The recovered program sizes its working width in *decimal* digits:
-   *   digits = depth10 + 50          (04_/配置与示例, and `mset plan` matches)
+  /* The reference engine sizes its working width in *decimal* digits:
+   *   digits = depth10 + 50          (配置与示例, and `mset plan` matches)
    *   precision = digits * log2(10)  bits
    * This function used to write `-psLog2 + 64`, which silently treats the
    * base-2 exponent as a bit count: at 2^-100 that asks for 192 bits where the
@@ -136,7 +136,7 @@ int requiredBits(double psLog2, int maxIter) {
 /* ------------------------------------------------------------------
  * Area canvas: 2^canvassizeshift pixels, quadtree inside.
  *
- * Structure transcribed from `07_反汇编与伪代码/Ghidra/full_pseudocode`:
+ * Structure documented in `公开算法文献`:
  *
  *   004325a0 canvas_calc_init       fixed shift 7  -> 128 px per area
  *   004bacd0 initcanvas_*           (2^shift+1)^2 vertices
@@ -916,7 +916,7 @@ struct Engine::Impl {
   /* Memory of finished vertex canvases.
    *
    * The reference keeps an AREA quadtree per view and only recomputes the
-   * areas whose computecycle changed (00427ab0.c:152, 00498570.c:88-107).
+   * areas whose computecycle changed (design-note.c:152, design-note.c:88-107).
    * This is the same idea at the granularity of a whole vertex grid: a small
    * LRU of finished canvases, keyed by the *appearance* as well as the view.
    * Coming back to a view — zoom out, undo a pan, revisit a preset — reuses
@@ -928,8 +928,8 @@ struct Engine::Impl {
   /* Per-area texture cache — drawarea (00522180).
    *
    * The reference draws each finished area from its own 128^2 texture and
-   * only recomputes an area whose computecycle changed (00427ab0.c:152,
-   * 00498570.c:88-107).  This is that texture: the tile exactly as it was
+   * only recomputes an area whose computecycle changed (design-note.c:152,
+   * design-note.c:88-107).  This is that texture: the tile exactly as it was
    * shaded, keyed by view, appearance, pass and limit, so a static frame
    * costs one memcpy per area and *zero* vertices and pixels.  A 128^2 tile
    * is 64 KB, and the whole cache is capped well below one deep frame. */
@@ -945,11 +945,11 @@ struct Engine::Impl {
   /* Canvas observation layer.
    *
    * The original engine is a subdivided vertex canvas, not a flat tile
-   * renderer: processcanvasfinite_hfloat (0046f630.c) keeps four corner
+   * renderer: processcanvasfinite_hfloat (design-note.c) keeps four corner
    * vertices per cell, raises canvas->maxiter from the iterations it actually
    * observes, and recomputes a cell when its own limit falls short of the
-   * vertex budget.  checkcanvas_hfloat (00498570.c) is the re-check pass and
-   * worker_move (00429d50.c:185) continues the work while idle.
+   * vertex budget.  checkcanvas_hfloat (design-note.c) is the re-check pass and
+   * worker_move (design-note.c:185) continues the work while idle.
    *
    * We keep the flat tile rasteriser (it is what makes the frame seamless and
    * fast) and carry the *observation* on a per-view, per-quality-pass state:
@@ -1059,7 +1059,7 @@ void Engine::Impl::render(const Request& q, uint8_t* out, Stats& st,
   const double ps = pixelScale(q);
 
   /* Explicit ceiling from the caller.  No zoom-derived iteration limit: the
-   * reference program's examples carry no iteration key and its disassembly
+   * reference engine's examples carry no iteration key and its reference material
    * has no maxiter = f(zoom).  The vertex budget below is the only thing that
    * can change the per-pixel limit, and it is driven by observed work. */
   const int ceiling =
@@ -1099,7 +1099,7 @@ void Engine::Impl::render(const Request& q, uint8_t* out, Stats& st,
                        iter.refine < kMaxIdlePasses;
 
       /* A zoom/pan changes the view and the caller's ceiling together.  That
-       * is exactly the automatic iteration change the reference program never
+       * is exactly the automatic iteration change the reference engine never
        * does: keep the observed limit.  A ceiling change on an unchanged view
        * is an operator action and is honoured. */
       const bool manualCeiling = sameView && ceiling != iter.lastCeiling;
@@ -1737,7 +1737,7 @@ void Engine::Impl::render(const Request& q, uint8_t* out, Stats& st,
   std::atomic<long long> iterCount{0};
 
   /* The four corner vertices of the whole frame, recorded as the tiles
-   * arrive.  processcanvasfinite_hfloat (0046f630.c:81-99) derives its
+   * arrive.  processcanvasfinite_hfloat (design-note.c:81-99) derives its
    * `known` from exactly these four, not from the whole picture. */
   std::atomic<int> cornerVals[4];
   for (auto& c : cornerVals) c.store(0, std::memory_order_relaxed);
@@ -1795,7 +1795,7 @@ void Engine::Impl::render(const Request& q, uint8_t* out, Stats& st,
      * the colour.
      *
      * With `fieldOut` set the colour stage is skipped entirely and the pixel
-     * leaves as two floats instead — the reference program's split (kernel
+     * leaves as two floats instead — the reference engine's split (kernel
      * produces the field, the shader produces the pixels).  Everything above
      * that point is identical, which is what makes the two paths comparable
      * frame for frame. */
@@ -2484,7 +2484,7 @@ void Engine::Impl::render(const Request& q, uint8_t* out, Stats& st,
   st.bounded = boundedCount.load() + cvBounded;
   st.glitches += glitchPx;
 
-  /* checkcanvas_hfloat (00498570.c) is the re-check pass: a vertex that ran
+  /* checkcanvas_hfloat (design-note.c) is the re-check pass: a vertex that ran
    * out of limit is recomputed with a higher maxiter.  Our evidence is a
    * frame whose interior is dominant and whose work reached (or sat at) the
    * limit.  A genuinely smooth flat region escapes early, so it does not

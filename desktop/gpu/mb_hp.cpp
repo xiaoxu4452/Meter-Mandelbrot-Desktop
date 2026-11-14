@@ -75,7 +75,7 @@ size_t orbitBytes(const Orbit& o) {
 }  // namespace
 
 int bitsForDepth(double depthBits) {
-  const double want = depthBits + 64.0;   // PRECISIONSHIFT from 0044e970.c
+  const double want = depthBits + 64.0;   // PRECISIONSHIFT from design-note.c
   if (!(want > 0)) return 128;
   return static_cast<int>(std::clamp(want, 96.0, 2400.0));
 }

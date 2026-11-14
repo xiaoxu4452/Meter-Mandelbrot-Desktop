@@ -52,7 +52,7 @@ struct Orbit {
 };
 
 /** Smallest precision that keeps a pixel of this size meaningful.
- *  Follows the reference program's PRECISIONSHIFT = 64 (depth + 64 bits),
+ *  Follows the reference engine's PRECISIONSHIFT = 64 (depth + 64 bits),
  *  clamped so shallow views never allocate a wide mantissa. */
 int bitsForDepth(double depthBits);
 

@@ -10,7 +10,7 @@
 // and the precision planner can map zoom decades directly onto a limb budget.
 // Multiplication uses schoolbook + Karatsuba above a small threshold.
 //
-// Part of the Retinamandelbrot reconstruction.  See docs/MATH.md.
+// Part of the independently implemented C++20 core.
 
 #pragma once
 

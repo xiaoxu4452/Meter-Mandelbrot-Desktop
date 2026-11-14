@@ -96,7 +96,7 @@ export const PALETTE_LIST = [
   { id: 'spectrum', en: 'Spectrum', zh: '光谱' },
   { id: 'orchid', en: 'Orchid', zh: '兰紫' },
   { id: 'paper', en: 'Paper', zh: '纸本' },
-  /* The reference program's own schemes, transcribed from examples/*.json.
+  /* The reference engine's own schemes, documented in examples/*.json.
    * These are additive sinusoids, not ramps: pal() is a sum of
    * rgb_i * 0.5*(1+sin(iter*frequency_i + initial_i)). */
   { id: 'prism', en: 'Prism', zh: '三棱镜' },
@@ -114,14 +114,14 @@ export const PALETTE_LIST = [
  * A source JSON stores (r, g, b, frequency, initial) in the reference's own
  * *log* domain, NOT in the domain `pal()` reads.  Two pieces of evidence:
  *
- *   005472c0.c:138 / :210   parameters.frequency and colors[].frequency are
+ *   design-note.c:138 / :210   parameters.frequency and colors[].frequency are
  *                           parsed verbatim into Params (log domain).
- *   00546630.c:79  / :87    loadParams uploads
+ *   design-note.c:79  / :87    loadParams uploads
  *                           params.color[i].frequency = exp(f_i + F)
  *                           params.color[i].initial   = init_i + I
  *                           to the shader, where F/I are the *global*
  *                           parameters.frequency / parameters.initial.
- *   00545d80.c:29           default F = -2.3025851 = -ln(10), I = 0.
+ *   design-note.c:29           default F = -2.3025851 = -ln(10), I = 0.
  *
  * So a colour entry that the file writes as -2.12 with F = -3.51 is really
  * exp(-5.63) = 0.0036 rad/iteration, i.e. a ~1760-iteration rainbow band —
@@ -131,13 +131,13 @@ export const PALETTE_LIST = [
  * iteration periods the phase aliases instead of drifting.
  *
  * `COLORS[x].raw` keeps the file's literal numbers (export must write them
- * back verbatim, or the original program would apply exp() twice).
+ * back verbatim, or the reference engine would apply exp() twice).
  * `COLORS[x].colors` holds the shader-ready values every renderer reads.
  * A missing rgb stays black, exactly as the reference's loader behaves.
  * brightnessfinite/infinite are the two region brightnesses.
  * ----------------------------------------------------------------*/
 
-/** Default global log-frequency of the reference (00545d80.c:29). */
+/** Default global log-frequency of the reference (design-note.c:29). */
 export const REF_DEFAULT_LOG_FREQ = -Math.LN10;
 
 /** Convert a reference-domain colour table into what `pal()` actually reads. */
@@ -270,7 +270,7 @@ export function registerCustomPalette(id, stops) {
 }
 
 /**
- * Register an additive scheme — the reference program's own colour model, the
+ * Register an additive scheme — the reference engine's own colour model, the
  * one its `parameters.colors` array describes: pal() is the sum of
  * `rgb_i * 0.5*(1+sin(iter*frequency_i + initial_i))`.
  *
@@ -295,7 +295,7 @@ export function registerAdditivePalette(id, colors, briFinite, briInfinite, labe
 
 /**
  * The literal JSON colour table and its two global keys.  Export writes these,
- * not the shader-domain values: the original program applies exp() itself.
+ * not the shader-domain values: the reference engine applies exp() itself.
  */
 export function paletteRaw(id) {
   const c = COLORS[id];

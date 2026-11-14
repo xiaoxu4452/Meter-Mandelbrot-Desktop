@@ -1,10 +1,10 @@
 // GLFW seed: init / create_window / get_time / window_should_close.
 //
-// 0054b808 glfwInit, 0054b848 glfwCreateWindow, 0054b820 glfwGetTime and
-// 0054b7b8 glfwWindowShouldClose are IAT thunks into glfw3.dll.  The headless
-// replacements below keep the object model (monitor enumeration, window
-// creation with a software framebuffer, monotonic clock, close flag) so the
-// recovered call sites keep their meaning without a display server.
+// glfwInit, glfwCreateWindow, glfwGetTime and glfwWindowShouldClose come
+// from glfw3.dll.  The headless replacements below keep the object model
+// (monitor enumeration, window creation with a software framebuffer,
+// monotonic clock, close flag) so the reference call sites keep their
+// meaning without a display server.
 
 #include "gl.hpp"
 #include "../port.hpp"

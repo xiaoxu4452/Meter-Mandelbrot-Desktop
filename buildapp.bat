@@ -2,11 +2,10 @@
 rem ---------------------------------------------------------------------------
 rem Build the desktop application FROM THIS TREE.
 rem
-rem The shell (Win32 + WebView2 + WebGPU canvas) lives in
-rem "D:\mandelbrot view\Meter Mandelbrot"; the renderer lives here in src\.
-rem This script drives that shell build with MB_CORE pointing at this tree and
-rem drops the result into dist\, so the whole product can be produced from
-rem C:\Users\harve\Desktop\mande\new without touching the old project by hand.
+rem The shell (Win32 + WebView2 + WebGPU canvas) lives under desktop\; the
+rem renderer lives here in src\.  This script drives that shell build with
+rem MB_CORE pointing at this tree and drops the result into dist\, so the
+rem whole product can be produced from a single checkout.
 rem
 rem   buildapp.bat            build + export to dist\
 rem   buildapp.bat --no-build export the existing exe only

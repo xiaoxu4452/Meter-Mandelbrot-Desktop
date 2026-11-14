@@ -129,7 +129,7 @@ export function nativeLog(msg) { post({ type: 'log', msg: String(msg) }); }
 /* ---- preset files -------------------------------------------------------
  *
  * The library itself is embedded (presets-data.js); the only file operations
- * are importing or exporting ONE JSON preset in the reference program's
+ * are importing or exporting ONE JSON preset in the reference engine's
  * format.  A WebView2 page cannot open an arbitrary path, so the shell owns
  * the dialogs and ships the file *text* back and forth — the page never
  * re-serialises a 40-digit centre.
@@ -308,7 +308,7 @@ function kindCode(spec) {
  * The colour set, in the form the core expects.
  *
  * Additive schemes travel as (r,g,b,frequency,initial) quintuples — literally
- * the reference program's `params.color[]`, so the core runs the same pal()
+ * the reference engine's `params.color[]`, so the core runs the same pal()
  * and gets the same picture.  Everything else travels as a gradient ramp.
  * Without this the job only carried `pal: 0`, i.e. every render and every
  * preset thumbnail came out in the same Ice ramp.
@@ -432,7 +432,7 @@ export function nativeRender(payload, onDone) {
  *
  * The shell then skips its colour stage entirely and hands back
  * w*h*4 float32 (smoothiter, distance, iter, dist2).  The page uploads that as
- * a texture and shades it with `gpu.js`, which is the reference program's own
+ * a texture and shades it with `gpu.js`, which is the reference engine's own
  * split and the only way to run its per-preset GLSL schemes.
  *
  * A field pass is never a tile: the shader needs the frame's own pixel grid

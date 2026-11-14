@@ -22,6 +22,6 @@ The generated `desktop/shell/ui_resources.cpp` embeds the workbench under
 rebuilt with `node desktop/tools/gen-ui-resources.mjs` and is deliberately not
 committed.
 
-This project is an independent reconstruction of *Retinamandelbrot for Windows
-Beta*. Kalles Fraktaler (`kf-2.15.5.2`) is a different program with different
-formulas and is not included here.
+The renderer is an independent C++20 implementation based on published
+perturbation / series-approximation algorithms. No code from third-party
+fractal applications is included.

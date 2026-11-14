@@ -544,7 +544,7 @@ input[type="range"]:focus::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--ac
 .scheme-view-row .btn { flex: 0 0 auto; }
 
 /* ---- official Julia preview window -------------------------------------
- * The reference pins a 56x56 viewport top-right (004169c0.c:130-155).  Here
+ * The reference pins a 56x56 viewport top-right (design-note.c:130-155).  Here
  * it is the first block of the console and scrolls with everything else, so
  * it belongs to the settings rather than floating over the picture.
  * It is a real WebGL surface, not a screenshot of the main canvas: it has

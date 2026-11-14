@@ -9,8 +9,8 @@
 //   direct        pixel scale > 2^-42   plain double iteration
 //   perturbation  pixel scale <= 2^-42  reference orbit + rebasing
 //
-// Provenance of the algorithm: Kalles Fraktaler 2.15.5.2 (Karl Runmo,
-// Claude Heiland-Allen, AGPL-3.0).  The reference orbit is computed at
+// The algorithm follows the published perturbation / series-approximation
+// literature.  The reference orbit is computed at
 // arbitrary precision, every pixel carries only its deviation from it, and
 // that deviation is periodically re-anchored to the reference ("rebasing")
 // so it never has to outgrow double precision.  A Taylor series of the
@@ -45,7 +45,7 @@ struct Spec {
 
 /* One term of the reference palette: pal() is the sum of
  *   rgb_i * 0.5*(1 + sin(iter*frequency_i + initial_i))
- * over i = 0..n-1.  These are the original program's palette parameters,
+ * over i = 0..n-1.  These are the reference engine's palette parameters,
  * read straight out of `colorschemes.json`; `frequency` is in *iterations*,
  * so the band density is a property of the scheme, not of the frame. */
 struct PaletteColor {
@@ -64,7 +64,7 @@ struct GradientStop {
 };
 
 struct Palette {
-  /* 0 = additive sinusoids (the reference program's own schemes)
+  /* 0 = additive sinusoids (the reference engine's own schemes)
    * 1 = gradient ramp (everything the editor produces) */
   int mode = 0;
   int n = 0;
@@ -92,7 +92,7 @@ struct Palette {
 };
 
 /* Built-in schemes.  0 = "Ice" (the app's default), 1..6 = the six schemes
- * shipped with the reference program (Iteration, Smooth, Distance,
+ * shipped with the reference engine (Iteration, Smooth, Distance,
  * Distance+levels, Texture, Iteration copy). */
 int paletteCount();
 const char* paletteName(int index);
@@ -119,13 +119,13 @@ struct Request {
   int outPitch = 0;        // row stride in pixels; 0 = width
 
   /* Explicit per-pixel iteration ceiling supplied by the caller.  The engine
-   * never derives it from the zoom: the reference program has no
+   * never derives it from the zoom: the reference engine has no
    * maxiter = f(zoom), it drives the limit from observed pixel work instead
    * (see IterState in mb_core.cpp). */
   int maxIter = 600;
   double offset = 0.0;     // palette phase, in *cycles* (0..1 = one full ramp)
   /* View rotation in radians, counter-clockwise, about the frame centre.  Every
-   * one of the reference program's presets carries this angle; a view imported
+   * one of the reference engine's presets carries this angle; a view imported
    * without it comes back turned, which is the most visible difference between
    * "the same view" and "some other view". */
   double rotation = 0.0;
@@ -136,7 +136,7 @@ struct Request {
   /* Detail level, 0..3.  It sets the smallest feature the frame is asked to
    * resolve: 3 = one pixel (the reference's own behaviour, samples = 2),
    * 2 = two pixels, 1 = four, 0 = eight.  Everything below that size is
-   * averaged instead of drawn, which is what the reference program does
+   * averaged instead of drawn, which is what the reference engine does
    * implicitly — its fine structure only appears once you zoom in far enough
    * for it to be bigger than a pixel.  Without it a deep frame turns into a
    * field of sub-pixel speckle ("密密麻麻") where no line is readable. */
@@ -147,14 +147,14 @@ struct Request {
    * two hundred, which paints the whole thing one flat colour.  With
    * `bands` > 0 the engine measures the frame's own range on a coarse grid
    * and fits that many palette cycles into it, so every position keeps the
-   * banding it had further out (the reference program does the same).  The
+   * banding it had further out (the reference engine does the same).  The
    * fit only ever *raises* the local density: it never goes below the
    * palette's natural cycle, so shallow views keep their original look.
    * `cycle` > 0 overrides the fit with an explicit iterations-per-cycle. */
   int bands = 0;
   double cycle = 0.0;
 
-  /* Colour model, transcribed from the reference's GLSL:
+  /* Colour model, documented in the reference's GLSL:
    *   0 Smooth            pal(smoothiter + 0.5)
    *   1 Iteration         pal(iter + 0.5)
    *   2 Distance          black field + white distance rim
@@ -195,7 +195,7 @@ struct Request {
 /* ------------------------------------------------------------------
  * Field — the iteration field, with the colour left out.
  *
- * The reference program does not compute colours on the CPU.  Its kernel
+ * The reference engine does not compute colours on the CPU.  Its kernel
  * produces a *field* (`tex_iter` / `tex_smoothiter` / `tex_dist`), and a GLSL
  * fragment shader turns that field into pixels (`core_fractal.glsl`).  Two
  * consequences, both of which the flat RGBA pipeline cannot express:
@@ -209,7 +209,7 @@ struct Request {
  * The layout is one texel per frame pixel, four float channels:
  *
  *   r = smooth iteration count.  Escaped pixels carry the count itself
- *       (`iter - log2(log2|z|²)`, see smoothiter_double 004c98e0.c:39-45);
+ *       (`iter - log2(log2|z|²)`, see smoothiter_double design-note.c:39-45);
  *       interior pixels carry the negated period, exactly as the reference's
  *       `data.smoothiter < 0` convention, so the shader decides the region
  *       from the sign alone.
@@ -317,7 +317,7 @@ struct Stats {
   int baseIter = 0;        // the per-pixel limit actually used this frame
   int maxIterUsed = 0;
   /* Observed iteration control, transcription of processcanvasfinite_hfloat
-   * (0046f630.c:81-114,197-205) and checkcanvas_hfloat (00498570.c).
+   * (design-note.c:81-114,197-205) and checkcanvas_hfloat (design-note.c).
    * `iterCeiling` is the caller's explicit ceiling; `cornerKnown` is the
    * largest iteration of the four corner vertices; `iterBudget` is
    * cornerKnown*3+3000; `observedMax` is canvas->maxiter, the largest
@@ -371,7 +371,7 @@ public:
 
   /** Compute the iteration field for one rectangle, with no colour work at all.
    *
-   *  This is the reference program's actual split: the CPU produces the field,
+   *  This is the reference engine's actual split: the CPU produces the field,
    *  the shader produces the pixels.  `field` must already be sized to
    *  req.width x req.height (`Field::resize`), and its origin corresponds to
    *  the request's tile origin.  The stats are the same ones render() reports,
@@ -393,26 +393,26 @@ private:
 };
 
 /* ------------------------------------------------------------------
- * Iteration policy transcribed from `07_反汇编与伪代码`.
+ * Iteration policy (algorithm design notes).
  *
- * The original program has NO maxiter = f(zoom).  `canvas->maxiter` is the
- * largest iteration actually OBSERVED, and a fresh budget is derived from
- * known corner vertices:
- *   0046f630.c:104-114  maxiter = known*3 + 3000
- *                       no known corner -> canvas->maxiter*5, else 0x2aaaa2da
- *   0046f630.c:197      a vertex whose own maxiter < known*3+1000 is recalculated
- *   00498d00.c:295      checkcanvas pass: canvas->maxiter*5 + 10000
- *   00429d50.c:185      idle continuation: idle_maxiter = 0x7fffffff
- *   0044e970.c:147      Julia seed: maxiter = 200000000
- *   004325a0.c:14-54    four templates (float/double/longdouble/hfloat),
- *                       automatic thresholds 500/8000 for Mandelbrot and
- *                       125/1600 for Julia; explicit 0x10/0x20/0x30/0x40.
+ * The engine has NO maxiter = f(zoom).  `canvas->maxiter` is the largest
+ * iteration actually OBSERVED, and a fresh budget is derived from known
+ * corner vertices:
+ *   maxiter = known*3 + 3000
+ *   no known corner -> canvas->maxiter*5, else 0x2aaaa2da
+ *   a vertex whose own maxiter < known*3+1000 is recalculated
+ *   checkcanvas pass: canvas->maxiter*5 + 10000
+ *   idle continuation: idle_maxiter = 0x7fffffff
+ *   Julia seed: maxiter = 200000000
+ *   four templates (float/double/longdouble/hfloat), automatic thresholds
+ *   500/8000 for Mandelbrot and 125/1600 for Julia;
+ *   explicit 0x10/0x20/0x30/0x40.
  *
  * These are inline exactly like pixelScaleLog2(): the CPU engine, the OpenCL
  * host glue and the regression binary must agree on every constant.  A hard
  * 200000 clamp used to live in vertexIterBudget(); it truncated genuine deep
- * budgets and was not in the disassembly.  The *performance* guard that keeps
- * a false "exhausted" signal from multiplying the cap five times belongs in
+ * budgets and is no longer applied.  The *performance* guard that keeps a
+ * false "exhausted" signal from multiplying the cap five times belongs in
  * the engine's safeCap, not in the arithmetic.
  * ------------------------------------------------------------------ */
 constexpr int kVertexSlack = 3000;
@@ -433,14 +433,14 @@ inline int vertexIterBudget(int known, int observedMax) {
   return (int)b;
 }
 
-/** checkcanvas_hfloat (00498d00.c:295) re-check budget. */
+/** checkcanvas_hfloat (design-note.c:295) re-check budget. */
 inline int checkCanvasIterBudget(int observedMax) {
   long long b = (long long)(observedMax > 0 ? observedMax : 0) * 5 + kCheckSlack;
   if (b > kIdleMaxIter) b = kIdleMaxIter;
   return (int)b;
 }
 
-/** processcanvasfinite_hfloat (0046f630.c:197) per-vertex recalc gate. */
+/** processcanvasfinite_hfloat (design-note.c:197) per-vertex recalc gate. */
 inline bool vertexNeedsRecalc(int vertexIter, int known) {
   return (long long)vertexIter < (long long)(known > 0 ? known : 0) * 3 + kVertexGate;
 }
@@ -448,7 +448,7 @@ inline bool vertexNeedsRecalc(int vertexIter, int known) {
 enum class PrecisionTemplate { kFloat = 0x10, kDouble = 0x20,
                                kLongDouble = 0x30, kHFloat = 0x40 };
 
-/** canvas_calc_init (004325a0.c:14-54), automatic mode. */
+/** canvas_calc_init (design-note.c:14-54), automatic mode. */
 inline PrecisionTemplate precisionTemplateFor(double depth, bool julia) {
   const double dbl = julia ? 125.0 : 500.0;
   const double ext = julia ? 1600.0 : 8000.0;

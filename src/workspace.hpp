@@ -1,6 +1,6 @@
 // Minimal JSON DOM and workspace persistence.
 //
-// The original binary stores its viewport and colour settings in JSON
+// The reference engine stores its viewport and colour settings in JSON
 // (savefractallink / the config loader).  This module is the readable C++
 // equivalent: a strict recursive-descent parser, a deterministic writer,
 // and a typed mapping onto RenderRequest.  It intentionally has no
