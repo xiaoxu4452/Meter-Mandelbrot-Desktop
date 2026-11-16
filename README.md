@@ -9,7 +9,10 @@ desktop application and a portable C++20 command-line renderer. Version 0.11
 The engine reaches **10^60000** magnification in well under a second on an
 analytically periodic centre, and its perturbation output is **byte-identical
 to an exact BigFloat oracle** at 10^20 and 10^38. Read
-[docs/ALGORITHM.md](docs/ALGORITHM.md) for the mathematics and
+[docs/ALGORITHM.md](docs/ALGORITHM.md) for the renderer derivation,
+[docs/FRACTAL_MATH.md](docs/FRACTAL_MATH.md) for a tutorial-level explanation of
+the mathematics (complex arithmetic, escape time, perturbation, folded families,
+Wirtinger jets, precision and the iteration budget), and
 [docs/BUILD.md](docs/BUILD.md) for every build path.
 
 ---

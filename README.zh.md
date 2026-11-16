@@ -7,7 +7,9 @@ C++20 命令行渲染器。版本 0.9（2026-11-14）。
 
 在解析精确周期中心上可放大到 **10^60000** 且单帧不足一秒；扰动层输出在 10^20
 与 10^38 处与精确 BigFloat oracle **逐像素一致**。数学原理见
-[docs/ALGORITHM.zh.md](docs/ALGORITHM.zh.md)，完整构建方式见
+[docs/ALGORITHM.zh.md](docs/ALGORITHM.zh.md)，保姆级数学原理讲解（复数、逃逸时间、
+扰动法、折叠族、Wirtinger jet、精度与迭代预算）见
+[docs/FRACTAL_MATH.zh.md](docs/FRACTAL_MATH.zh.md)，完整构建方式见
 [docs/BUILD.zh.md](docs/BUILD.zh.md)。
 
 ---
