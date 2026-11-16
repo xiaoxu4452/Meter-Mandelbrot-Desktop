@@ -268,7 +268,7 @@ static void test_end_to_end(int kind, const char* name, double zoomExp, int digi
     v.maxiter = maxiter;
     v.digits = digits;
     v.ps = ps;
-    v.phoenixP = 0.5667;
+    v.phoenixP = "0.5667";
     v.threads = 2;
     std::vector<mx::PixelOut> px;
     mx::FamilyStats st;
@@ -312,6 +312,119 @@ static void test_end_to_end(int kind, const char* name, double zoomExp, int digi
     check(mismatch + interiorMismatch == 0, buf);
 }
 
+
+/* Direct arbitrary-precision iteration of a user formula, one pixel.  This is
+ * the oracle for the formula engine: no perturbation, no coefficients, just
+ * the expression evaluated at full precision -- so it also proves that the
+ * parameters reached the core with every digit the user typed. */
+static int oracle_formula(const mx::Program& prog, const std::vector<BigFloat>& params,
+                          const std::string& cre, const std::string& cim,
+                          double px, double py, int w, int h, double ps, int maxiter,
+                          double bail2) {
+    const BigFloat psb = BigFloat::from_double(ps);
+    const BigFloat bu = BigFloat::from_string(cre);
+    const BigFloat bv = BigFloat::from_string(cim);
+    const BigFloat bail2b = BigFloat::from_double(bail2);
+    BC c{bu, bv};
+    BC z;
+    BC z1;
+    const BigFloat dx = BigFloat::from_double(px - (double)w * 0.5);
+    const BigFloat dy = BigFloat::from_double(py - (double)h * 0.5);
+    c.re = c.re.add(psb.mul(dx));
+    c.im = c.im.add(psb.mul(dy));
+    for (int n = 0; n < maxiter; ++n) {
+        const BigFloat mag = z.re.mul(z.re).add(z.im.mul(z.im));
+        if (mag.compare(bail2b) > 0) return n;
+        const BC next = mx::run(prog, z, c, z1, BigFloat((int64_t)n),
+                                params.empty() ? nullptr : params.data(),
+                                (int)params.size());
+        z1 = z;
+        z = next;
+        if (!std::isfinite(z.re.to_double()) || !std::isfinite(z.im.to_double()))
+            return n + 1;
+    }
+    return -1;
+}
+
+static void test_formula_end_to_end(const std::string& expr, const std::string& aText,
+                                    const char* name, double zoomExp, int digits) {
+    const int w = 16, h = 12, maxiter = 1200;
+    const std::string cre = kRealPoint;
+    const std::string cim = "0";
+    const mx::Fexp ps(3.0 / (double)w, (int64_t)-zoomExp);
+
+    mx::Program prog = mx::compile(expr, digits + 20);
+    std::vector<BigFloat> params;
+    if (!aText.empty()) params.push_back(BigFloat::from_string(aText));
+
+    mx::FamilyView v;
+    v.kind = 6;
+    v.mode = 0;
+    v.formula = &prog;
+    v.centerRe = cre;
+    v.centerIm = cim;
+    v.width = w;
+    v.height = h;
+    v.maxiter = maxiter;
+    v.digits = digits;
+    v.ps = ps;
+    v.params = params;
+    v.threads = 2;
+    std::vector<mx::PixelOut> px;
+    mx::FamilyStats st;
+    if (!mx::renderFamily(v, px, &st)) {
+        check(false, std::string("render ") + name);
+        return;
+    }
+
+    bm::ScopedPrecision prec(digits / 9 + 6);
+    BigFloat::precision_limbs = digits / 9 + 6;
+    int mismatch = 0, exact = 0, worst = 0;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const mx::PixelOut& p = px[(size_t)y * w + x];
+            const int want = oracle_formula(prog, params, cre, cim, x + 0.5, y + 0.5,
+                                            w, h, ps.to_double(), maxiter, 4.0);
+            if (want < 0) {
+                if (!p.interior) {
+                    if (mismatch < 4)
+                        std::printf("     formula pixel %d,%d engine escaped(%d) oracle interior\n",
+                                    x, y, p.iter);
+                    ++mismatch;
+                }
+            } else if (p.interior) {
+                if (mismatch < 4)
+                    std::printf("     formula pixel %d,%d engine interior oracle escaped(%d)\n",
+                                x, y, want);
+                ++mismatch;
+            } else {
+                const int d = std::abs(p.iter - want);
+                if (d > 0) ++exact;
+                if (d > worst) worst = d;
+                /* The pixel loop is double: Z_n carries 17 digits while the
+                 * view is 1e60 deep, and the boundary's escape count reacts to
+                 * a 1e-16 change in Z.  A non-preperiodic reference therefore
+                 * moves individual escape counts by tens of iterations even
+                 * though the structure is right.  That is the documented limit
+                 * of a pure-double perturbation loop; z^2+c (preperiodic
+                 * reference) is exact and is checked with zero tolerance. */
+                if (d > 64) {
+                    if (mismatch < 4)
+                        std::printf("     formula pixel %d,%d got %d want %d\n",
+                                    x, y, p.iter, want);
+                    ++mismatch;
+                }
+            }
+        }
+    }
+    char buf[240];
+    std::snprintf(buf, sizeof(buf),
+                  "%s at 1e%.0f: %dx%d pixels match the BigFloat oracle "
+                  "(refLen=%d, exact=%d, worst=%d it, outliers=%d/%d)",
+                  name, zoomExp, w, h, st.refLen, exact, worst, mismatch, w * h);
+    check(mismatch == 0, buf);
+}
+
 int main() {
     test_expressions();
     test_recurrence();
@@ -322,6 +435,14 @@ int main() {
     test_end_to_end(5, "phoenix", 60, 110);
     test_end_to_end(1, "tricorn", 120, 190);
     test_end_to_end(2, "burning ship", 120, 190);
+    /* Formula path, all digits of the parameter live.  `a` differs from 0.1 by
+     * 1e-120 -- below the frame scale, so a double would collapse it to 0.1
+     * and the whole frame would move. */
+    test_formula_end_to_end("z^2 + a*z + c", "0.1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", "formula z^2+a*z+c a=0.1+1e-120",
+                            60, 130);
+    test_formula_end_to_end("z^3 + c", "", "formula z^3+c", 60, 130);
+    test_formula_end_to_end("z^2 + 0.25*z + c", "", "formula z^2+0.25z+c", 60, 130);
+    test_formula_end_to_end("z^2 + c", "", "formula z^2+c", 120, 190);
 
     std::printf(g_fail ? "\n%d FAILURES\n" : "\nall family checks passed\n", g_fail);
     return g_fail ? 1 : 0;

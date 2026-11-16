@@ -19,8 +19,20 @@ constexpr int kMaxRebases = 8;
 
 struct Orbit {
     std::vector<double> zr, zi, fa, fb;
-    std::vector<double> ar, ai, br, bi, cr, ci;   // formula derivatives
+    /* Formula derivatives at z_n, straight out of the expression's own jet:
+     *   (ar,ai)   dF/dz
+     *   (br,bi)   dF/dc          (Mandelbrot views only)
+     *   (cr,ci)   (1/2) d2F/dz2
+     *   (gr,gi)   dF/dzbar       (zero for a holomorphic formula)
+     *   (dr,di)   d2F/dz dzbar   (idem)
+     *   (er,ei)   (1/2) d2F/dzbar2 (idem) */
+    std::vector<double> ar, ai, br, bi, cr, ci;
+    std::vector<double> gr, gi, dr, di, er, ei;
+    std::vector<double> hr, hi;                   // dF/dz1 (maps with memory)
+    std::vector<double> qr, qi;   // d2F/dz dc      (a Mandelbrot view's cross term)
+    std::vector<double> sr, si;   // (1/2) d2F/dc2
     int len = 0;
+    bool holo = true;             // no conjugate-direction coefficients needed
     double px = 0.0, py = 0.0;
 };
 
@@ -58,7 +70,7 @@ BC evalFormula(const Program& p, const BC& z, const BC& c, const BC& z1, int64_t
 
 /* One step of a folded family, in full precision.  A and B are the folded
  * reference quantities the delta recurrence needs; they are stored per step. */
-void stepFamily(int kind, const BigFloat& cr, const BigFloat& ci, double phoenixP,
+void stepFamily(int kind, const BigFloat& cr, const BigFloat& ci, const BigFloat& pv,
                 BigFloat& zr, BigFloat& zi, BigFloat& pr, BigFloat& pi,
                 BigFloat& A, BigFloat& B) {
     const BigFloat ar = zr.mul(zr);
@@ -84,7 +96,6 @@ void stepFamily(int kind, const BigFloat& cr, const BigFloat& ci, double phoenix
             ni = B.abs();
             break;
         default: {  // phoenix
-            const BigFloat pv = bfd(phoenixP);
             nr = A.add(pr.mul(pv));
             ni = B.add(pi.mul(pv));
             pr = zr;
@@ -120,11 +131,25 @@ bool buildOrbit(const FamilyView& v, const Ctx& c, double px, double py, Orbit& 
         o.bi.assign((size_t)stride, 0.0);
         o.cr.assign((size_t)stride, 0.0);
         o.ci.assign((size_t)stride, 0.0);
+        o.gr.assign((size_t)stride, 0.0);
+        o.gi.assign((size_t)stride, 0.0);
+        o.dr.assign((size_t)stride, 0.0);
+        o.di.assign((size_t)stride, 0.0);
+        o.er.assign((size_t)stride, 0.0);
+        o.ei.assign((size_t)stride, 0.0);
+        o.hr.assign((size_t)stride, 0.0);
+        o.hi.assign((size_t)stride, 0.0);
+        o.qr.assign((size_t)stride, 0.0);
+        o.qi.assign((size_t)stride, 0.0);
+        o.sr.assign((size_t)stride, 0.0);
+        o.si.assign((size_t)stride, 0.0);
     }
 
     bm::ScopedPrecision prec(limbsForDigits(c.digits));
     const Plane p = planeAt(c, px, py);
 
+    const BigFloat pv = BigFloat::from_string(v.phoenixP.empty() ? std::string("0.5667")
+                                                                 : v.phoenixP);
     BigFloat zr, zi, pr, pi;
     BigFloat cr, ci;
     if (v.mode == 0) {
@@ -137,48 +162,37 @@ bool buildOrbit(const FamilyView& v, const Ctx& c, double px, double py, Orbit& 
         zi = p.y;
     }
 
-    /* 10^-(digits/3): the central difference for the second derivative needs
-     * h^2 well above the truncation error, and h itself must not be so small
-     * that F(z+h)-F(z-h) disappears.  std::pow is avoided on purpose (this
-     * runtime's libm once returned 1.32 for pow(10,-3)). */
-    double h = 1.0;
-    for (int i = 0; i < c.digits / 3; ++i) h *= 0.1;
-    const BigFloat hb = bfd(h);
-    const BigFloat two_h = bfd(2.0 * h);
-    const BigFloat h2 = bfd(h * h);
-
     int len = stride;
     const BigFloat bail2b = bfd(v.bail2);
+    Jet jnow;
     for (int n = 0; n < stride; ++n) {
         BigFloat A, B;
         if (isFormula) {
-            const BC z{zr, zi};
-            const BC cc{cr, ci};
-            const BC z1{pr, pi};
-            const BC F = evalFormula(*v.formula, z, cc, z1, n);
-            const BC zp{zr.add(hb), zi};
-            const BC zm{zr.sub(hb), zi};
-            const BC Fp = evalFormula(*v.formula, zp, cc, z1, n);
-            const BC Fm = evalFormula(*v.formula, zm, cc, z1, n);
-            const BC A2{bm::div(Fp.re.sub(Fm.re), two_h),
-                        bm::div(Fp.im.sub(Fm.im), two_h)};
-            const BC C2{bm::div(Fp.re.sub(F.re.mul_ui(2)).add(Fm.re), h2),
-                        bm::div(Fp.im.sub(F.im.mul_ui(2)).add(Fm.im), h2)};
-            BC B2{};
+            jnow = evalJet(*v.formula, BC{zr, zi}, BC{cr, ci}, BC{pr, pi},
+                           BigFloat((int64_t)n),
+                           v.params.empty() ? nullptr : v.params.data(),
+                           (int)v.params.size());
+            const Jet& J = jnow;
+            o.ar[(size_t)n] = J.dz.re.to_double();
+            o.ai[(size_t)n] = J.dz.im.to_double();
+            o.cr[(size_t)n] = J.dzz.re.to_double();
+            o.ci[(size_t)n] = J.dzz.im.to_double();
+            o.gr[(size_t)n] = J.dzb.re.to_double();
+            o.gi[(size_t)n] = J.dzb.im.to_double();
+            o.dr[(size_t)n] = J.dzzb.re.to_double();
+            o.di[(size_t)n] = J.dzzb.im.to_double();
+            o.er[(size_t)n] = J.dzbb.re.to_double();
+            o.ei[(size_t)n] = J.dzbb.im.to_double();
+            o.hr[(size_t)n] = J.dz1.re.to_double();
+            o.hi[(size_t)n] = J.dz1.im.to_double();
+            o.qr[(size_t)n] = J.dzc.re.to_double();
+            o.qi[(size_t)n] = J.dzc.im.to_double();
+            o.sr[(size_t)n] = J.dcc.re.to_double();
+            o.si[(size_t)n] = J.dcc.im.to_double();
             if (v.mode == 0) {
-                const BC cp{cr.add(hb), ci};
-                const BC cm{cr.sub(hb), ci};
-                const BC Fcp = evalFormula(*v.formula, z, cp, z1, n);
-                const BC Fcm = evalFormula(*v.formula, z, cm, z1, n);
-                B2 = BC{bm::div(Fcp.re.sub(Fcm.re), two_h),
-                        bm::div(Fcp.im.sub(Fcm.im), two_h)};
+                o.br[(size_t)n] = J.dc.re.to_double();
+                o.bi[(size_t)n] = J.dc.im.to_double();
             }
-            o.ar[(size_t)n] = A2.re.to_double();
-            o.ai[(size_t)n] = A2.im.to_double();
-            o.br[(size_t)n] = B2.re.to_double();
-            o.bi[(size_t)n] = B2.im.to_double();
-            o.cr[(size_t)n] = C2.re.to_double();
-            o.ci[(size_t)n] = C2.im.to_double();
             o.zr[(size_t)n] = zr.to_double();
             o.zi[(size_t)n] = zi.to_double();
         } else {
@@ -198,17 +212,15 @@ bool buildOrbit(const FamilyView& v, const Ctx& c, double px, double py, Orbit& 
             break;
         }
         if (isFormula) {
-            /* z1 is the value at n-1, so the step must be taken before prev is
-             * overwritten.  Getting this backwards is the phoenix bug in
-             * miniature: the formula then reads the future. */
-            const BC next = evalFormula(*v.formula, BC{zr, zi}, BC{cr, ci},
-                                        BC{pr, pi}, n);
+            /* The jet evaluated at the top of the loop already carries F(z).
+             * z1 is the value at n-1, so prev must only advance after the step:
+             * getting this backwards makes a formula read the future. */
             pr = zr;
             pi = zi;
-            zr = next.re;
-            zi = next.im;
+            zr = jnow.v.re;
+            zi = jnow.v.im;
         } else {
-            stepFamily(v.kind, cr, ci, v.phoenixP, zr, zi, pr, pi, A, B);
+            stepFamily(v.kind, cr, ci, pv, zr, zi, pr, pi, A, B);
         }
         if (!std::isfinite(zr.to_double()) || !std::isfinite(zi.to_double())) {
             len = n + 1;
@@ -229,10 +241,23 @@ bool buildOrbit(const FamilyView& v, const Ctx& c, double px, double py, Orbit& 
                 o.bi[(size_t)n] = o.bi[n0];
                 o.cr[(size_t)n] = o.cr[n0];
                 o.ci[(size_t)n] = o.ci[n0];
+                o.gr[(size_t)n] = o.gr[n0];
+                o.gi[(size_t)n] = o.gi[n0];
+                o.dr[(size_t)n] = o.dr[n0];
+                o.di[(size_t)n] = o.di[n0];
+                o.er[(size_t)n] = o.er[n0];
+                o.ei[(size_t)n] = o.ei[n0];
+                o.hr[(size_t)n] = o.hr[n0];
+                o.hi[(size_t)n] = o.hi[n0];
+                o.qr[(size_t)n] = o.qr[n0];
+                o.qi[(size_t)n] = o.qi[n0];
+                o.sr[(size_t)n] = o.sr[n0];
+                o.si[(size_t)n] = o.si[n0];
             }
         }
     }
     o.len = len;
+    o.holo = isFormula ? v.formula->holomorphic : true;
     if (o.zr.empty()) { err = "empty orbit"; return false; }
     return true;
 }
@@ -245,7 +270,7 @@ void renderBandFamilies(const FamilyView& v, const Ctx& c, const std::vector<Orb
                         int* escMin, int* escMax, int* bounded, const std::atomic<bool>* cancel) {
     const double ps = c.ps;
     const double bail2 = v.bail2;
-    const double p = v.phoenixP;
+    const double p = v.phoenixP.empty() ? 0.5667 : std::atof(v.phoenixP.c_str());
     for (int y = y0; y < y1; ++y) {
         if (cancel && cancel->load(std::memory_order_relaxed)) return;
         for (int x = 0; x < c.w; ++x) {
@@ -360,6 +385,7 @@ void renderBandFormula(const FamilyView& v, const Ctx& c, const Orbit& R,
             PixelOut o;
             double ur = (double)x + 0.5 - R.px;
             double ui = (double)y + 0.5 - R.py;
+            double pu_r = 0.0, pu_i = 0.0;      // delta at n-1, for dF/dz1
             const double dcx = ur, dcy = ui;
             bool interior = true;
             for (int n = 0; n < R.len; ++n) {
@@ -382,20 +408,57 @@ void renderBandFormula(const FamilyView& v, const Ctx& c, const Orbit& R,
                 const double ar = R.ar[(size_t)n], ai = R.ai[(size_t)n];
                 const double br = R.br[(size_t)n], bi = R.bi[(size_t)n];
                 const double cr = R.cr[(size_t)n], ci = R.ci[(size_t)n];
-                /* A u */
-                const double t1r = ar * ur - ai * ui;
-                const double t1i = ar * ui + ai * ur;
-                /* B dc  (Mandelbrot only) */
-                const double t2r = v.mode == 0 ? br * dcx - bi * dcy : 0.0;
-                const double t2i = v.mode == 0 ? br * dcy + bi * dcx : 0.0;
-                /* 0.5 C ps u^2 */
+                /* dF/dz * u */
+                double nr = ar * ur - ai * ui;
+                double ni = ar * ui + ai * ur;
+                /* dF/dz1 * u(n-1): maps with memory (phoenix-style formulas) */
+                const double hr = R.hr[(size_t)n], hi = R.hi[(size_t)n];
+                if (hr != 0.0 || hi != 0.0) {
+                    nr += hr * pu_r - hi * pu_i;
+                    ni += hr * pu_i + hi * pu_r;
+                }
+                /* dF/dc * dc  (a Mandelbrot view carries the pixel offset in c) */
+                if (v.mode == 0) {
+                    nr += br * dcx - bi * dcy;
+                    ni += br * dcy + bi * dcx;
+                    /* Second order in dc, and the mixed dz dc term: a formula
+                     * such as sin(z)*c has d2F/dz dc != 0, and dropping it left
+                     * most of the frame on the wrong side of the boundary. */
+                    const double qr = R.qr[(size_t)n], qi = R.qi[(size_t)n];
+                    const double sr = R.sr[(size_t)n], si = R.si[(size_t)n];
+                    nr += ps * (qr * ur - qi * ui) * dcx - ps * (qr * ui + qi * ur) * dcy;
+                    ni += ps * (qr * ur - qi * ui) * dcy + ps * (qr * ui + qi * ur) * dcx;
+                    nr += ps * (sr * (dcx * dcx - dcy * dcy) - si * 2.0 * dcx * dcy);
+                    ni += ps * (sr * 2.0 * dcx * dcy + si * (dcx * dcx - dcy * dcy));
+                }
+                /* ps * ( 1/2 Fzz u^2 + Fz zbar u ubar + 1/2 Fzbar zbar ubar^2 ) */
                 const double u2r = ur * ur - ui * ui;
                 const double u2i = 2.0 * ur * ui;
-                const double s = 0.5 * ps;
-                const double t3r = s * (cr * u2r - ci * u2i);
-                const double t3i = s * (cr * u2i + ci * u2r);
-                ur = t1r + t2r + t3r;
-                ui = t1i + t2i + t3i;
+                const double s = ps;
+                nr += s * (cr * u2r - ci * u2i);
+                ni += s * (cr * u2i + ci * u2r);
+                if (!R.holo) {
+                    /* conj(u) = (ur, -ui); conj(dF/dzbar) * conj(u) */
+                    const double gr = R.gr[(size_t)n], gi = R.gi[(size_t)n];
+                    nr += gr * ur - gi * ui;
+                    ni -= gr * ui + gi * ur;
+                    /* mixed and anti-holomorphic second-order terms */
+                    const double dr2 = R.dr[(size_t)n], di2 = R.di[(size_t)n];
+                    const double er2 = R.er[(size_t)n], ei2 = R.ei[(size_t)n];
+                    /* u * conj(u) = |u|^2 (real) */
+                    const double uu = ur * ur + ui * ui;
+                    nr += s * (dr2 * uu);
+                    ni += s * (di2 * uu);
+                    /* conj(u)^2 */
+                    const double v2r = ur * ur - ui * ui;
+                    const double v2i = -2.0 * ur * ui;
+                    nr += s * (er2 * v2r - ei2 * v2i);
+                    ni += s * (er2 * v2i + ei2 * v2r);
+                }
+                pu_r = ur;
+                pu_i = ui;
+                ur = nr;
+                ui = ni;
             }
             if (interior) {
                 o.iter = -1;
@@ -430,7 +493,7 @@ const char* familyName(int kind) {
 namespace {
 
 /* One family step without the fold bookkeeping, for the Newton solver. */
-void famStep(int kind, double phoenixP, const BigFloat& cr, const BigFloat& ci,
+void famStep(int kind, const BigFloat& phoenixP, const BigFloat& cr, const BigFloat& ci,
              BigFloat& zr, BigFloat& zi, BigFloat& pr, BigFloat& pi) {
     const BigFloat A = zr.mul(zr).sub(zi.mul(zi));
     const BigFloat B = zr.mul(zi).mul_ui(2);
@@ -441,9 +504,8 @@ void famStep(int kind, double phoenixP, const BigFloat& cr, const BigFloat& ci,
         case 3: nr = A.abs(); ni = B; break;
         case 4: nr = A; ni = B.abs(); break;
         default: {
-            const BigFloat p = bfd(phoenixP);
-            nr = A.add(pr.mul(p));
-            ni = B.add(pi.mul(p));
+            nr = A.add(pr.mul(phoenixP));
+            ni = B.add(pi.mul(phoenixP));
             pr = zr;
             pi = zi;
             break;
@@ -454,7 +516,7 @@ void famStep(int kind, double phoenixP, const BigFloat& cr, const BigFloat& ci,
 }
 
 /* z_m and z_n (n = m + p) for a given c, in one pass. */
-void famRun(int kind, double phoenixP, const BigFloat& cr, const BigFloat& ci, int m, int n,
+void famRun(int kind, const BigFloat& phoenixP, const BigFloat& cr, const BigFloat& ci, int m, int n,
             BigFloat& zmr, BigFloat& zmi, BigFloat& znr, BigFloat& zni) {
     BigFloat zr, zi, pr, pi;
     for (int k = 0; k < n; ++k) {
@@ -468,7 +530,7 @@ void famRun(int kind, double phoenixP, const BigFloat& cr, const BigFloat& ci, i
 }
 
 /* F(c) = z_n(c) - z_m(c): the nucleus (m=0) or Misiurewicz equation. */
-void evalF(int kind, double phoenixP, const BigFloat& cr, const BigFloat& ci, int m, int n,
+void evalF(int kind, const BigFloat& phoenixP, const BigFloat& cr, const BigFloat& ci, int m, int n,
            BigFloat& Fr, BigFloat& Fi) {
     BigFloat zmr, zmi, znr, zni;
     famRun(kind, phoenixP, cr, ci, m, n, zmr, zmi, znr, zni);
@@ -478,7 +540,7 @@ void evalF(int kind, double phoenixP, const BigFloat& cr, const BigFloat& ci, in
 
 }  // namespace
 
-PointResult findFamilyPoint(int kind, double phoenixP, int preperiod, int period,
+PointResult findFamilyPoint(int kind, const std::string& phoenixP, int preperiod, int period,
                             const std::string& guessRe, const std::string& guessIm,
                             int digits, int max_newton) {
     PointResult out;
@@ -490,6 +552,8 @@ PointResult findFamilyPoint(int kind, double phoenixP, int preperiod, int period
     bm::ScopedPrecision prec(limbsForDigits(digits));
 
     BigFloat::precision_limbs = limbsForDigits(digits);
+    const BigFloat pv = BigFloat::from_string(phoenixP.empty() ? std::string("0.5667")
+                                                              : phoenixP);
     BigFloat cr = BigFloat::from_string(guessRe.empty() ? std::string("0") : guessRe);
     BigFloat ci = BigFloat::from_string(guessIm.empty() ? std::string("0") : guessIm);
 
@@ -501,7 +565,7 @@ PointResult findFamilyPoint(int kind, double phoenixP, int preperiod, int period
 
     for (int it = 0; it < max_newton; ++it) {
         BigFloat Fr, Fi;
-        evalF(kind, phoenixP, cr, ci, m, n, Fr, Fi);
+        evalF(kind, pv, cr, ci, m, n, Fr, Fi);
         const BigFloat res = bm::sqrt(Fr.mul(Fr).add(Fi.mul(Fi)));
         out.log10_residual = res.is_zero() ? -999.0 : (double)res.magnitude_exp10();
         out.newton_steps = it;
@@ -514,10 +578,10 @@ PointResult findFamilyPoint(int kind, double phoenixP, int preperiod, int period
          * moves with c too, and dropping it made every step 1.5x too long). */
         BigFloat rpr, rpi, rnr, rni;    // c.re + h / c.re - h
         BigFloat ipr, ipi, inr, ini;    // c.im + h / c.im - h
-        evalF(kind, phoenixP, cr.add(hb), ci, m, n, rpr, rpi);
-        evalF(kind, phoenixP, cr.sub(hb), ci, m, n, rnr, rni);
-        evalF(kind, phoenixP, cr, ci.add(hb), m, n, ipr, ipi);
-        evalF(kind, phoenixP, cr, ci.sub(hb), m, n, inr, ini);
+        evalF(kind, pv, cr.add(hb), ci, m, n, rpr, rpi);
+        evalF(kind, pv, cr.sub(hb), ci, m, n, rnr, rni);
+        evalF(kind, pv, cr, ci.add(hb), m, n, ipr, ipi);
+        evalF(kind, pv, cr, ci.sub(hb), m, n, inr, ini);
         const BigFloat two_h = bfd(2.0 * h);
         const BigFloat a = bm::div(rpr.sub(rnr), two_h);      // dRe/dcr
         const BigFloat b = bm::div(ipr.sub(inr), two_h);      // dRe/dci

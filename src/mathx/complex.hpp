@@ -53,17 +53,22 @@ inline BC bc_log(const BC& a) {
 }
 
 inline BC bc_sqrt(const BC& a) {
+    /* Principal branch, written so the negative real axis is handled: the
+     * earlier version took sqrt((r-|x|)/2) for the imaginary part, which is
+     * zero exactly where the answer is purely imaginary -- sqrt(-1) came back
+     * as 0 and every formula using it silently lost the term. */
     const BigFloat r = bc_abs(a);
     if (r.is_zero()) return BC{};
-    BigFloat half_re = bm::div_ui(bm::abs(a.re).add(r), 2);
-    BigFloat root = bm::sqrt(half_re);
     if (a.re.sign >= 0) {
-        BigFloat im = a.im.is_zero() ? BigFloat() : bm::div(bm::div_ui(a.im, 2), root);
-        return BC{root, im};
+        const BigFloat re = bm::sqrt(bm::div_ui(a.re.add(r), 2));
+        const BigFloat im = re.is_zero() ? BigFloat()
+                                        : bm::div(bm::div_ui(a.im, 2), re);
+        return BC{re, im};
     }
-    BigFloat im = bm::sqrt(bm::div_ui(r.sub(bm::abs(a.re)), 2));
-    if (a.im.sign < 0) im = -im;
-    return BC{bm::div(bm::div_ui(a.im, 2), im.is_zero() ? BigFloat((int64_t)1) : im), im};
+    const BigFloat mag = bm::sqrt(bm::div_ui(r.sub(a.re), 2));
+    const BigFloat im = a.im.sign < 0 ? -mag : mag;
+    const BigFloat re = bm::div(bm::div_ui(a.im, 2), im);
+    return BC{re, im};
 }
 
 inline BC bc_sinh(const BC& a) {
@@ -108,7 +113,8 @@ inline BC bc_atan(const BC& a) {
     /* (i/2) log((i+z)/(i-z)) */
     const BC i = bc_int(0, 1);
     const BC l = bc_log(bc_div(bc_add(i, a), bc_sub(i, a)));
-    return BC{bm::div_ui(l.im, 2), bm::div_ui(-l.re, 2)};
+    /* (i/2)(x+iy) = (-y/2, x/2) */
+    return BC{bm::div_ui(-l.im, 2), bm::div_ui(l.re, 2)};
 }
 
 inline BC bc_powi(const BC& a, int64_t n) {

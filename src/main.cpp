@@ -26,7 +26,7 @@ namespace {
 
 void usage() {
     std::cout <<
-        "mset — scientific Mandelbrot engine (independent C++20 core)\n"
+        "mset — scientific Mandelbrot engine (Retinamandelbrot reconstruction)\n"
         "\n"
         "Usage:\n"
         "  mset render [options]\n"
@@ -527,7 +527,11 @@ int cmd_family(int argc, char** argv) {
     std::string outPath = "family.png";
     std::string palName = "rainbow";
     int mode = 0, width = 640, height = 400, maxiter = 2000, digits = 0, threads = 0;
-    double zoomMant = 1.0, phoenixP = 0.5667, band = 64.0, rotDeg = 0.0;
+    double zoomMant = 1.0, band = 64.0, rotDeg = 0.0;
+    /* Any number of decimal digits: a phoenix p or a slider that is only 16
+     * digits long is what caps a family view at about 1e16. */
+    std::string phoenixP = "0.5667";
+    std::string paramSpec;
     int64_t zoomExp = 0;
 
     auto parse_zoom = [](const std::string& t, double& m, int64_t& e) {
@@ -552,7 +556,9 @@ int cmd_family(int argc, char** argv) {
         else if (a == "--maxiter") maxiter = std::atoi(arg_value(argc, argv, i).c_str());
         else if (a == "--digits") digits = std::atoi(arg_value(argc, argv, i).c_str());
         else if (a == "--threads") threads = std::atoi(arg_value(argc, argv, i).c_str());
-        else if (a == "--phoenix") phoenixP = std::atof(arg_value(argc, argv, i).c_str());
+        else if (a == "--phoenix") phoenixP = arg_value(argc, argv, i);
+        else if (a == "--param") paramSpec += (paramSpec.empty() ? "" : ";") +
+                                            arg_value(argc, argv, i);
         else if (a == "--band") band = std::atof(arg_value(argc, argv, i).c_str());
         else if (a == "--rotation") rotDeg = std::atof(arg_value(argc, argv, i).c_str());
         else if (a == "--palette") palName = arg_value(argc, argv, i);
@@ -602,6 +608,25 @@ int cmd_family(int argc, char** argv) {
     v.digits = wantDigits;
     v.ps = Fexp(3.0 / (zoomMant * width), -zoomExp);
     v.phoenixP = phoenixP;
+    if (kind == 6 && !paramSpec.empty()) {
+        /* "a=0.5;b=1" -> one BigFloat per program parameter, at the same
+         * precision the orbit runs at. */
+        v.params.assign(program.params.size(), BigFloat());
+        size_t at = 0;
+        while (at < paramSpec.size()) {
+            size_t semi = paramSpec.find(';', at);
+            if (semi == std::string::npos) semi = paramSpec.size();
+            const std::string kv = paramSpec.substr(at, semi - at);
+            at = semi + 1;
+            const size_t eq = kv.find('=');
+            if (eq == std::string::npos) continue;
+            const std::string name = kv.substr(0, eq);
+            for (size_t pi = 0; pi < program.params.size(); ++pi) {
+                if (program.params[pi] == name)
+                    v.params[pi] = BigFloat::from_string(kv.substr(eq + 1));
+            }
+        }
+    }
     v.threads = threads;
     v.rotCos = std::cos(rotDeg * 3.14159265358979323846 / 180.0);
     v.rotSin = std::sin(rotDeg * 3.14159265358979323846 / 180.0);
@@ -663,7 +688,7 @@ int cmd_family_point(int argc, char** argv) {
     std::string kindName = "tricorn";
     std::string gre = "0", gim = "0";
     int preperiod = 0, period = 3, digits = 200, maxNewton = 24;
-    double phoenixP = 0.5667;
+    std::string phoenixP = "0.5667";
     for (int i = 2; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--kind") kindName = arg_value(argc, argv, i);
@@ -673,7 +698,7 @@ int cmd_family_point(int argc, char** argv) {
         else if (a == "--guess-re") gre = arg_value(argc, argv, i);
         else if (a == "--guess-im") gim = arg_value(argc, argv, i);
         else if (a == "--max-newton") maxNewton = std::atoi(arg_value(argc, argv, i).c_str());
-        else if (a == "--phoenix") phoenixP = std::atof(arg_value(argc, argv, i).c_str());
+        else if (a == "--phoenix") phoenixP = arg_value(argc, argv, i);
         else if (a == "-h" || a == "--help") { usage(); return 0; }
         else { std::cerr << "unknown family-point option: " << a << "\n"; return 2; }
     }

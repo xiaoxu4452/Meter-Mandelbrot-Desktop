@@ -660,7 +660,10 @@ struct Job {
    * sliders as "a=0.5;b=1".  Parsed by the core's own mathx library. */
   std::string expr;
   std::string params;
-  double juliaRe = 0.0, juliaIm = 0.0, phoenixP = 0.5667;
+  /* Arbitrary-precision text: a phoenix p rounded to a double cannot describe
+   * the map past 1e16, so the page sends it as a string. */
+  std::string phoenixP = "0.5667";
+  double juliaRe = 0.0, juliaIm = 0.0;
   std::string juliaReS, juliaImS;   // arbitrary-precision Julia c (may be empty)
   int pal = 0;            // index into mbc::builtinPalette()
   /* Colour set.  `stops` is the page's gradient ([pos,r,g,b] x n, 0..1); when
@@ -1788,6 +1791,14 @@ class MsgHandler : public Cb<ICoreWebView2WebMessageReceivedEventHandler> {
       j.kind = JsonInt(s, "kind", 0);
       j.expr = JsonStr(s, "expr", "");
       j.params = JsonStr(s, "params", "");
+      const std::string phs = JsonStr(s, "phoenixP", "");
+      if (!phs.empty()) {
+        j.phoenixP = phs;
+      } else {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.17g", JsonNum(s, "phoenixP", 0.5667));
+        j.phoenixP = buf;
+      }
       j.power = JsonInt(s, "power", 2);
       // The page sends Julia's c as a decimal string so the deep orbit keeps
       // every digit the frame centre has.  The double is derived from it for
@@ -2185,7 +2196,8 @@ static void RenderThread() {
                 j.colorMode, j.rotation, fch, reinterpret_cast<float*>(fs.ptr),
                 &g_stopRender, &mr,
                 j.expr.empty() ? nullptr : j.expr.c_str(),
-                j.params.empty() ? nullptr : j.params.c_str());
+                j.params.empty() ? nullptr : j.params.c_str(),
+                j.phoenixP.empty() ? nullptr : j.phoenixP.c_str());
             if (coreDrew) {
               st.bits = mr.digits;
               st.perturb = true;
@@ -2418,7 +2430,8 @@ static void RenderThread() {
               grad.count ? &grad : nullptr, outPtr,
               req.outPitch > 0 ? req.outPitch : j.viewW, &g_stopRender, &mr,
               j.expr.empty() ? nullptr : j.expr.c_str(),
-              j.params.empty() ? nullptr : j.params.c_str());
+              j.params.empty() ? nullptr : j.params.c_str(),
+              j.phoenixP.empty() ? nullptr : j.phoenixP.c_str());
           if (drew) {
             st.bits = mr.digits;
             st.refLen = mr.refLen;

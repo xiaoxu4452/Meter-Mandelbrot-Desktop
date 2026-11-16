@@ -156,18 +156,19 @@ bool compile_formula(const std::string& src, int digits, mx::Program& out) {
 
 /* "a=0.5;b=1" -> slider values, in the program's own parameter order. */
 void bind_params(const mx::Program& prog, const char* params,
-                 std::vector<double>& out) {
-    out.assign(prog.params.size(), 0.0);
+                 std::vector<BigFloat>& out) {
+    out.assign(prog.params.size(), BigFloat());
     if (!params || !*params) return;
-    std::map<std::string, double> kv;
+    std::map<std::string, BigFloat> kv;
     const char* p = params;
     while (*p) {
         while (*p == ';' || *p == ',' || *p == ' ') ++p;
         const char* eq = std::strchr(p, '=');
         if (!eq) break;
         std::string name(p, (size_t)(eq - p));
-        const double v = std::atof(eq + 1);
-        kv[name] = v;
+        /* The slider text is parsed at the working precision: rounding a
+         * coefficient through a double caps the useful depth at 1e16. */
+        kv[name] = BigFloat::from_string(std::string(eq + 1));
         const char* semi = std::strchr(eq, ';');
         if (!semi) semi = std::strchr(eq, ',');
         if (!semi) break;
@@ -183,13 +184,18 @@ void bind_params(const mx::Program& prog, const char* params,
  * `digits` the working precision the caller already planned. */
 bool render_family(const std::string& cre, const std::string& cim,
                    const std::string& jre, const std::string& jim,
-                   const mx::Fexp& ps, int viewW, int viewH, int maxIter,
+                   const mx::Fexp& ps, int digits, int viewW, int viewH, int maxIter,
                    int mode, int kind, const char* expr, const char* params,
+                   const std::string& phoenixP,
                    double rotation, std::vector<PixelOut>& px, mx::FamilyStats& st,
                    const std::atomic<bool>* cancel) {
     mx::Program prog;
-    if (kind == 6 && !compile_formula(expr ? expr : "", 220, prog)) return false;
-    std::vector<double> pv;
+    /* The literals and constants of a formula are baked in at compile time, so
+     * the program has to be built at the precision the view will run at: a
+     * 1e-40 pi is a different number than a 1e-300 one. */
+    if (kind == 6 && !compile_formula(expr ? expr : "", digits > 0 ? digits + 20 : 220, prog))
+        return false;
+    std::vector<BigFloat> pv;
     if (kind == 6) bind_params(prog, params, pv);
 
     mx::FamilyView v;
@@ -204,6 +210,9 @@ bool render_family(const std::string& cre, const std::string& cim,
     v.height = viewH;
     v.maxiter = maxIter > 0 ? maxIter : 600;
     v.ps = ps;
+    v.digits = digits;
+    v.phoenixP = phoenixP.empty() ? std::string("0.5667") : phoenixP;
+    v.params = std::move(pv);
     v.rotCos = std::cos(rotation);
     v.rotSin = std::sin(rotation);
     v.cancel = cancel;
@@ -227,7 +236,7 @@ bool RenderTile(const char* centerRe, const char* centerIm,
                 double rotation, const Gradient* grad,
                 uint8_t* rgba, int outPitch,
                 const std::atomic<bool>* cancel, Result* out,
-                const char* expr, const char* params) {
+                const char* expr, const char* params, const char* phoenixP) {
     Result local;
     Result* r = out ? out : &local;
     *r = Result();
@@ -269,8 +278,9 @@ bool RenderTile(const char* centerRe, const char* centerIm,
                                vp.center_im.to_fixed(digits),
                                (juliaRe && *juliaRe) ? juliaRe : "",
                                (juliaIm && *juliaIm) ? juliaIm : "",
-                               vp.pixel_scale(), viewW, viewH, maxIter, mode, kind,
-                               expr, params, rotation, px, fs, cancel)) {
+                               vp.pixel_scale(), digits, viewW, viewH, maxIter, mode,
+                               kind, expr, params, phoenixP ? phoenixP : "",
+                               rotation, px, fs, cancel)) {
                 r->error = "family render failed";
                 return false;
             }
@@ -579,7 +589,7 @@ bool RenderField(const char* centerRe, const char* centerIm,
                  const char* juliaRe, const char* juliaIm,
                  int colorMode, double rotation, int channels,
                  float* field, const std::atomic<bool>* cancel, Result* out,
-                 const char* expr, const char* params) {
+                 const char* expr, const char* params, const char* phoenixP) {
     Result local;
     Result* r = out ? out : &local;
     *r = Result();
@@ -617,8 +627,9 @@ bool RenderField(const char* centerRe, const char* centerIm,
                                vp.center_im.to_fixed(digits),
                                (juliaRe && *juliaRe) ? juliaRe : "",
                                (juliaIm && *juliaIm) ? juliaIm : "",
-                               vp.pixel_scale(), viewW, viewH, maxIter, mode, kind,
-                               expr, params, rotation, px, fs, cancel)) {
+                               vp.pixel_scale(), digits, viewW, viewH, maxIter, mode,
+                               kind, expr, params, phoenixP ? phoenixP : "",
+                               rotation, px, fs, cancel)) {
                 r->error = "family render failed";
                 return false;
             }

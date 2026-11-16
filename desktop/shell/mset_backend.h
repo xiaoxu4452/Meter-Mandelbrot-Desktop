@@ -70,7 +70,8 @@ bool RenderTile(const char* centerRe, const char* centerIm,
                 double rotation, const Gradient* grad,
                 uint8_t* rgba, int outPitch,
                 const std::atomic<bool>* cancel, Result* out,
-                const char* expr = nullptr, const char* params = nullptr);
+                const char* expr = nullptr, const char* params = nullptr,
+                const char* phoenixP = nullptr);
 
 // True when the bridge can describe this request at all (used to decide
 // fallback before allocating work).  Every family is supported at every
@@ -89,6 +90,7 @@ bool RenderField(const char* centerRe, const char* centerIm,
                  const char* juliaRe, const char* juliaIm,
                  int colorMode, double rotation, int channels,
                  float* field, const std::atomic<bool>* cancel, Result* out,
-                 const char* expr = nullptr, const char* params = nullptr);
+                 const char* expr = nullptr, const char* params = nullptr,
+                 const char* phoenixP = nullptr);
 
 }  // namespace msetb

@@ -3,7 +3,7 @@
 [中文说明 / Chinese README](README.zh.md)
 
 A scientific deep-zoom Mandelbrot / Julia engine with a Win32 + WebView2
-desktop application and a portable C++20 command-line renderer. Version 0.10
+desktop application and a portable C++20 command-line renderer. Version 0.11
 (2026-11-16).
 
 The engine reaches **10^60000** magnification in well under a second on an
@@ -128,19 +128,45 @@ self-contained numerical library:
   (division by zero is zero, `log(0)` is zero), so one divergent pixel cannot
   abort a frame.
 * `expr.cpp` — lexer + Pratt parser + postfix VM for user formulas. Variables
-  `z, c, n, z1`; constants `i, pi, e`; single-letter parameters; implicit
-  multiplication (`2z`, `3(z+1)`); functions `sin cos tan asin acos atan sinh
-  cosh tanh exp log ln log10 sqrt abs abs2 arg conj re im pow min max atan2
-  floor ceil round sign if`, plus comparisons. Parse errors carry a byte
-  offset, which is what the formula panel shows.
-* `complex.hpp` — the complex layer over BigFloat.
+  `z, c, n, z1`; constants `i, pi, e, tau, phi`; single-letter parameters;
+  implicit multiplication (`2z`, `3(z+1)`); functions `sin cos tan cot sec
+  csc asin acos atan asinh acosh atanh sinh cosh tanh exp exp2 exp10 log ln
+  log2 log10 sqrt cbrt abs abs2 arg conj re im floor ceil round trunc frac
+  sign pow min max mod hypot root logb atan2 clamp if`, comparisons, logical
+  `&& || !`, the ternary `?:`, and `sum(k, a, b, body)` / `prod(...)` with a
+  bound variable. Parse errors carry a byte offset, which is what the formula
+  panel shows.
+* `complex.hpp` — the complex layer over BigFloat, including the inverse
+  trigonometric and hyperbolic functions and a `sqrt` that is correct on the
+  negative real axis (`sqrt(-1)` used to return 0, which silently deleted a
+  term from every formula that needed it).
 * `families.cpp` — deep rendering for the folded families and for formulas.
 
 The folded families (tricorn, burning ship, celtic, perpendicular, phoenix) use
 an **exact** delta recurrence: the fold signs come from the reference orbit, so
-there is no Taylor truncation and a 1e120 frame is as exact as a 1e2 one. A
-user formula uses a second-order Taylor perturbation whose derivatives are
-taken from the arbitrary-precision reference by central differences.
+there is no Taylor truncation and a 1e120 frame is as exact as a 1e2 one.
+
+A user formula is differentiated symbolically. `evalJet` returns the value plus
+a second-order Wirtinger jet (`dz`, `dzbar`, `dzz`, `dzzbar`, `dzbarzbar`, and
+the derivatives in `c` and in `z1`), and the reference orbit integrates that
+jet: one evaluation per step, no finite differences, and a formula that is not
+holomorphic (`conj`, `re`, `abs`) still gets the correct linear term. The
+pixel recurrence is
+
+```
+u' = Fz u + Fzbar conj(u) + Fc dc + ps ( Fzz u^2 + Fzzbar u conj(u) + Fzbarzbar conj(u)^2 )
+     + ps ( Fzc u dc + Fcc dc^2 ) + Fz1 u(n-1)
+```
+
+which is exact to second order in the pixel offset *and* in the constant offset,
+so a map such as `sin(z)*c + z^2` (where `d2F/dz dc` is not zero) lands on the
+right side of the boundary instead of drifting.
+
+Parameters are arbitrary precision. `--phoenix` and `--param a=0.001` take
+decimal strings, and the desktop shell passes the slider text through unchanged;
+a parameter rounded through a double caps a family's useful depth at about
+1e16, because past that the reference orbit is no longer the map the user asked
+for.
 
 ```bat
 mset family --kind tricorn --center-re <220 digits> --center-im 0 ^
@@ -161,10 +187,19 @@ application uses the same engine for family views and for formulas deeper than
 1e13; the formula panel's JS evaluator keeps the shallow frames, where its rich
 syntax (sums, products, piecewise) is the better trade.
 
-Unit checks: `tests\bigmath.bat` (elementary functions against known decimal
-expansions) and `tests\family.bat` (expression parsing, each delta recurrence
-against `F(Z+d)-F(Z)` in full precision, and every pixel of 1e60 / 1e120 frames
-against a direct BigFloat iteration).
+One renderer per view: the desktop application sends **every** depth of a
+family or formula to this engine. Shallow frames used to run a JavaScript
+evaluator with double parameters while deep ones ran the core, which is two
+different answers for one expression -- a view could alternate between a
+low-precision frame and a correct one. The low-resolution preview pass is gone
+too: the canvas keeps the previous exact frame until the next one lands.
+
+Unit checks: `tests\expr.bat` (75 identities at 120 digits, the jet against a
+finite difference of the evaluator itself, parser errors, `sum`/`prod`, and a
+120-digit parameter), `tests\bigmath.bat` (elementary functions against known
+decimal expansions) and `tests\family.bat` (expression parsing, each delta
+recurrence against `F(Z+d)-F(Z)` in full precision, and every pixel of 1e60 /
+1e120 frames against a direct BigFloat iteration, formulas included).
 
 ## 6. How the renderer works
 

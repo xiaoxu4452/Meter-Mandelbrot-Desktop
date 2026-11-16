@@ -341,18 +341,21 @@ function palettePayload(id) {
  * single-letter parameters and the documented function list.  A quick token
  * check keeps an expression it cannot parse on the JS path instead of sending
  * it to a host that would answer with an empty frame. */
-const FN_NAMES = new Set(['sin','cos','tan','asin','acos','atan','sinh','cosh','tanh',
-  'exp','log','ln','log10','sqrt','abs','abs2','norm','arg','conj','re','real',
-  'im','imag','floor','ceil','round','sign','sgn','pow','min','max','atan2','if']);
-const CONST_NAMES = new Set(['z','c','n','z1','z_1','zp','i','pi','e']);
+const FN_NAMES = new Set(['sin','cos','tan','cot','sec','csc',
+  'asin','acos','atan','arcsin','arccos','arctan','asinh','acosh','atanh',
+  'sinh','cosh','tanh','exp','exp2','exp10','log','ln','log2','log10',
+  'sqrt','cbrt','abs','cabs','mag','abs2','norm','sqabs','arg','phase',
+  'conj','re','real','im','imag','floor','ceil','round','trunc','frac','sign','sgn',
+  'pow','min','max','atan2','mod','fmod','hypot','root','logb','clamp','if','select',
+  'sum','prod']);
+const CONST_NAMES = new Set(['z','c','n','z1','z_1','zp','zprev','i','pi','e','tau','phi']);
 export function formulaNativeReady(expr) {
-  if (!formulaNative) return false;
   const src = String(expr || '').trim();
   if (!src) return false;
   const ids = src.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
   for (const id of ids) {
     if (CONST_NAMES.has(id) || FN_NAMES.has(id)) continue;
-    if (id.length === 1) continue;          // parameter
+    if (id.length === 1) continue;          // parameter or loop variable
     return false;
   }
   return true;
@@ -361,32 +364,33 @@ export function formulaNativeReady(expr) {
 export function nativeCapable(spec, psLog2) {
   if (!usable) return false;
   if (spec.mode === 'x') {
-    /* Custom formulas go native only when the JS evaluator is no longer
-     * practical: shallow frames stay on the proven path, deep ones (past
-     * 1e13) are exactly where the C++ core earns its keep. */
-    if (psLog2 > -45) return false;
+    /* Every depth goes to the C++ core.  Running shallow frames through the JS
+     * evaluator and deep ones through the core meant two different values for
+     * the same expression -- the JS path rounds parameters through a double,
+     * the core does not -- and the point that switched between them showed a
+     * low-precision frame and a correct one alternately as the preview and the
+     * full pass disagreed.  One evaluator, one answer. */
     return formulaNativeReady(spec.customExpr);
   }
   if (spec.mode !== 'm' && spec.mode !== 'j') return false;
   const k = kindCode(spec);
   if (k < 0) return false;
   /* No depth cut here any more: bits scale with psLog2 (up to 16384, ≈1e4930),
-   * so depth is a cost question, not a capability question.
-   *
-   * The polynomial core z^p + c is perturbable natively for every power the
-   * core supports (2..8), so a deep multibrot no longer has to fall back to
-   * the JS worker.  The folded families (tricorn / burning ship / celtic /
-   * perpendicular) still need a double orbit below 1e-13 because their step
-   * flips sign somewhere along the orbit, so they stay shallow-only; phoenix
-   * has no native kernel at all. */
+   * so depth is a cost question, not a capability question.  The folded
+   * families used to be shallow-only because the core had no kernel for them;
+   * src/mathx/families.cpp now carries an exact delta recurrence for all five,
+   * verified pixel by pixel at 1e60 and 1e120, so they run natively at every
+   * depth too -- one renderer per view, never a double-precision stand-in. */
   return true;
 }
 
 /** "a=0.5;b=1" for the formula sliders. */
 function paramString(spec) {
   if (spec.mode !== 'x' || !spec.customParams) return '';
+  /* String(v), not Number(v): a parameter typed with 40 significant digits
+   * has to reach the core intact. */
   return Object.entries(spec.customParams)
-    .map(([k, v]) => k + '=' + Number(v))
+    .map(([k, v]) => k + '=' + String(v))
     .join(';');
 }
 
@@ -461,7 +465,7 @@ function buildMsg(payload, seq) {
     power: spec.power || 2,
     juliaRe: spec.julia ? String(spec.julia.re) : 0,
     juliaIm: spec.julia ? String(spec.julia.im) : 0,
-    phoenixP: spec.phoenixP != null ? spec.phoenixP : 0.5667
+    phoenixP: String(spec.phoenixP != null ? spec.phoenixP : 0.5667)
   };
 }
 

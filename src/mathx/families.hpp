@@ -14,9 +14,10 @@
 // For these five the delta recurrence is an exact polynomial (no Taylor
 // truncation), so a frame at 1e120 is as exact as one at 1e2.  A user formula
 // is handled with the second-order Taylor perturbation
-//   du = A u + B dc + 0.5 C ps u^2
-// with A, B, C obtained from the arbitrary-precision reference orbit by
-// central differences.
+//   du = A u + B dc + ps (C u^2 + D u ubar + E ubar^2)
+// with A, B, C, D, E taken from the expression's own second-order jet along the
+// arbitrary-precision reference orbit -- no finite differences, so the
+// coefficients are exact to the working precision.
 //
 // Per-pixel arithmetic is double, in units of the pixel scale (u = delta / ps),
 // which is what keeps a 1e120 frame in registers: the reference values are
@@ -52,7 +53,13 @@ struct FamilyView {
     Fexp ps;                // plane units per pixel
     double bail2 = 4.0;
     double rotCos = 1.0, rotSin = 0.0;
-    double phoenixP = 0.5667;
+    /* Phoenix's p and the formula sliders travel as decimal strings: a
+     * parameter that is only 16 digits long caps the useful depth at about
+     * 1e16, because the reference orbit stops being the map the user asked
+     * for.  Parse-at-full-precision is what lets a phoenix view go as deep as
+     * a Mandelbrot one. */
+    std::string phoenixP = "0.5667";
+    std::vector<BigFloat> params;   // one per Program::params entry
     int threads = 0;
     const std::atomic<bool>* cancel = nullptr;
 };
@@ -87,7 +94,7 @@ struct PointResult {
     double log10_residual = 0.0;
 };
 
-PointResult findFamilyPoint(int kind, double phoenixP, int preperiod, int period,
+PointResult findFamilyPoint(int kind, const std::string& phoenixP, int preperiod, int period,
                             const std::string& guessRe, const std::string& guessIm,
                             int digits, int max_newton);
 
