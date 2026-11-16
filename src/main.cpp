@@ -2,6 +2,8 @@
 #include "floatexp.hpp"
 #include "image.hpp"
 #include "palette.hpp"
+#include "mathx/expr.hpp"
+#include "mathx/families.hpp"
 #include "port/port.hpp"
 #include "dive.hpp"
 #include "gmp_bridge.hpp"
@@ -33,6 +35,9 @@ void usage() {
         "  mset coverage [--dump|--check]\n"
         "  mset nucleus --center-re D --center-im D [--period N] [--digits N]\n"
         "  mset misiurewicz --m M --p P [--center-re D --center-im D] [--digits N]\n"
+        "  mset family --kind tricorn|burningship|celtic|perpendicular|phoenix|formula\n"
+        "              [--expr \"sin(z)^2 + c\"] [--zoom 1e120] [--out PNG]\n"
+        "  mset family-point --kind tricorn --preperiod 3 --period 1 --digits 200\n"
         "  mset info\n"
         "\n"
         "Render options:\n"
@@ -423,7 +428,7 @@ int cmd_info() {
               << "  output      PNG / PPM\n"
               << "\n"
               << "Verified (PNG comparisons byte-identical unless stated):\n"
-              << "  1.54e73  deepest shipped example (Example 14), 640x400 0.47 s\n"
+              << "  1.54e73  deepest shipped example (Retinamandelbrot 14), 640x400 0.47 s\n"
               << "  1e38     vs exact BigFloat oracle (cmp 38 3000 5): 100% identical\n"
               << "  1e20     100% identical; 1e6 98.71% (chaotic boundary +-1 iteration)\n"
               << "  Julia    1e6/1e12/1e20/1e38 vs --exact: 0 differing pixels\n"
@@ -507,6 +512,194 @@ int cmd_misiurewicz(int argc, char** argv) {
     return 0;
 }
 
+
+/* ------------------------------------------------------------------ family
+ *
+ * Deep rendering for the folded families and for user formulas.  This is the
+ * command-line face of src/mathx: the same engine the desktop shell calls for
+ * a tricorn/burning-ship/celtic/perpendicular/phoenix frame and for a typed
+ * expression such as "sin(z)^2 + c".
+ */
+int cmd_family(int argc, char** argv) {
+    std::string kindName = "tricorn";
+    std::string expr;
+    std::string cre = "-0.6", cim = "0", jre, jim;
+    std::string outPath = "family.png";
+    std::string palName = "rainbow";
+    int mode = 0, width = 640, height = 400, maxiter = 2000, digits = 0, threads = 0;
+    double zoomMant = 1.0, phoenixP = 0.5667, band = 64.0, rotDeg = 0.0;
+    int64_t zoomExp = 0;
+
+    auto parse_zoom = [](const std::string& t, double& m, int64_t& e) {
+        size_t p = t.find_first_of("eE");
+        if (p == std::string::npos) { m = std::atof(t.c_str()); e = 0; return; }
+        m = std::atof(t.substr(0, p).c_str());
+        e = std::atoll(t.substr(p + 1).c_str());
+    };
+
+    for (int i = 2; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--kind") kindName = arg_value(argc, argv, i);
+        else if (a == "--expr") expr = arg_value(argc, argv, i);
+        else if (a == "--mode") { std::string m = arg_value(argc, argv, i); mode = (m == "j" || m == "julia") ? 1 : 0; }
+        else if (a == "--center-re") cre = arg_value(argc, argv, i);
+        else if (a == "--center-im") cim = arg_value(argc, argv, i);
+        else if (a == "--julia-re") jre = arg_value(argc, argv, i);
+        else if (a == "--julia-im") jim = arg_value(argc, argv, i);
+        else if (a == "--zoom") parse_zoom(arg_value(argc, argv, i), zoomMant, zoomExp);
+        else if (a == "--width") width = std::atoi(arg_value(argc, argv, i).c_str());
+        else if (a == "--height") height = std::atoi(arg_value(argc, argv, i).c_str());
+        else if (a == "--maxiter") maxiter = std::atoi(arg_value(argc, argv, i).c_str());
+        else if (a == "--digits") digits = std::atoi(arg_value(argc, argv, i).c_str());
+        else if (a == "--threads") threads = std::atoi(arg_value(argc, argv, i).c_str());
+        else if (a == "--phoenix") phoenixP = std::atof(arg_value(argc, argv, i).c_str());
+        else if (a == "--band") band = std::atof(arg_value(argc, argv, i).c_str());
+        else if (a == "--rotation") rotDeg = std::atof(arg_value(argc, argv, i).c_str());
+        else if (a == "--palette") palName = arg_value(argc, argv, i);
+        else if (a == "--out") outPath = arg_value(argc, argv, i);
+        else if (a == "-h" || a == "--help") { usage(); return 0; }
+        else { std::cerr << "unknown family option: " << a << "\n"; return 2; }
+    }
+
+    int kind = -1;
+    if (kindName == "tricorn") kind = 1;
+    else if (kindName == "burningship" || kindName == "burning-ship" || kindName == "burning") kind = 2;
+    else if (kindName == "celtic") kind = 3;
+    else if (kindName == "perpendicular") kind = 4;
+    else if (kindName == "phoenix") kind = 5;
+    else if (kindName == "formula" || kindName == "custom") kind = 6;
+    if (kind < 0) { std::cerr << "unknown family: " << kindName << "\n"; return 2; }
+    if (kind == 6 && expr.empty()) { std::cerr << "--expr is required for --kind formula\n"; return 2; }
+
+    const double psLog10 = std::log10(3.0 / (zoomMant * width)) - (double)zoomExp;
+    int wantDigits = digits;
+    if (wantDigits <= 0) {
+        wantDigits = (int)(-psLog10) + 40;
+        if (wantDigits < 60) wantDigits = 60;
+    }
+
+    mx::Program program;
+    if (kind == 6) {
+        try {
+            program = mx::compile(expr, wantDigits + 20);
+        } catch (const mx::ExprError& e) {
+            std::cerr << "formula error at " << e.pos << ": " << e.what() << "\n";
+            return 2;
+        }
+    }
+
+    mx::FamilyView v;
+    v.kind = kind;
+    v.mode = mode;
+    v.formula = kind == 6 ? &program : nullptr;
+    v.centerRe = cre;
+    v.centerIm = cim;
+    v.juliaRe = jre;
+    v.juliaIm = jim;
+    v.width = width;
+    v.height = height;
+    v.maxiter = maxiter;
+    v.digits = wantDigits;
+    v.ps = Fexp(3.0 / (zoomMant * width), -zoomExp);
+    v.phoenixP = phoenixP;
+    v.threads = threads;
+    v.rotCos = std::cos(rotDeg * 3.14159265358979323846 / 180.0);
+    v.rotSin = std::sin(rotDeg * 3.14159265358979323846 / 180.0);
+
+    std::vector<PixelOut> px;
+    mx::FamilyStats st;
+    if (!mx::renderFamily(v, px, &st)) {
+        std::cerr << "family render failed: " << st.error << "\n";
+        return 1;
+    }
+
+    const Palette pal = Palette::by_name(palName);
+    Image img;
+    img.resize(width, height);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const PixelOut& p = px[(size_t)y * width + x];
+            RGB c{0, 0, 0};
+            if (!p.interior) {
+                double t = p.smooth / (band > 1.0 ? band : 64.0) + 0.5;
+                c = pal.eval(t);
+                c.r = std::min(1.0, std::max(0.0, c.r));
+                c.g = std::min(1.0, std::max(0.0, c.g));
+                c.b = std::min(1.0, std::max(0.0, c.b));
+            }
+            uint8_t* q = img.pixel(x, y);
+            q[0] = (uint8_t)(c.r * 255.0 + 0.5);
+            q[1] = (uint8_t)(c.g * 255.0 + 0.5);
+            q[2] = (uint8_t)(c.b * 255.0 + 0.5);
+        }
+    }
+    std::string err;
+    if (outPath.size() >= 4 && outPath.substr(outPath.size() - 4) == ".ppm") {
+        if (!write_ppm(outPath, img, &err)) { std::cerr << err << "\n"; return 1; }
+    } else if (!write_png(outPath, img, &err)) {
+        std::cerr << err << "\n";
+        return 1;
+    }
+
+    std::cout << "family " << mx::familyName(kind) << " " << width << "x" << height
+              << " zoom=" << zoomMant << "e" << zoomExp << " digits=" << st.digits << "\n";
+    std::cout << "  reference orbits = " << st.refs << "  longest = " << st.refLen
+              << " points  glitches = " << st.glitches << "\n";
+    std::cout << "  escape range = " << st.escMin << " .. " << st.escMax
+              << "  interior = " << st.bounded << "  time = " << st.ms << " ms\n";
+    std::cout << "  output: " << outPath << "\n";
+    return 0;
+}
+
+
+/* ------------------------------------------------------------ family-point
+ *
+ * Find a nucleus (--preperiod 0) or a Misiurewicz point (--preperiod > 0) of a
+ * folded family at arbitrary precision.  This is the coordinate generator that
+ * makes a 1e120 frame meaningful: only a boundary point carries structure at
+ * that scale, and a 120-digit boundary point cannot be typed by hand.
+ */
+int cmd_family_point(int argc, char** argv) {
+    std::string kindName = "tricorn";
+    std::string gre = "0", gim = "0";
+    int preperiod = 0, period = 3, digits = 200, maxNewton = 24;
+    double phoenixP = 0.5667;
+    for (int i = 2; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--kind") kindName = arg_value(argc, argv, i);
+        else if (a == "--preperiod" || a == "--m") preperiod = std::atoi(arg_value(argc, argv, i).c_str());
+        else if (a == "--period" || a == "--p") period = std::atoi(arg_value(argc, argv, i).c_str());
+        else if (a == "--digits") digits = std::atoi(arg_value(argc, argv, i).c_str());
+        else if (a == "--guess-re") gre = arg_value(argc, argv, i);
+        else if (a == "--guess-im") gim = arg_value(argc, argv, i);
+        else if (a == "--max-newton") maxNewton = std::atoi(arg_value(argc, argv, i).c_str());
+        else if (a == "--phoenix") phoenixP = std::atof(arg_value(argc, argv, i).c_str());
+        else if (a == "-h" || a == "--help") { usage(); return 0; }
+        else { std::cerr << "unknown family-point option: " << a << "\n"; return 2; }
+    }
+    int kind = 0;
+    if (kindName == "tricorn") kind = 1;
+    else if (kindName == "burningship" || kindName == "burning-ship") kind = 2;
+    else if (kindName == "celtic") kind = 3;
+    else if (kindName == "perpendicular") kind = 4;
+    else if (kindName == "phoenix") kind = 5;
+    else { std::cerr << "unknown family: " << kindName << "\n"; return 2; }
+
+    const mx::PointResult r = mx::findFamilyPoint(kind, phoenixP, preperiod, period, gre, gim,
+                                                  digits, maxNewton);
+    if (!r.ok) {
+        std::cerr << "family-point failed: " << r.error << "\n";
+        return 1;
+    }
+    std::cout << "kind " << kindName << "  preperiod " << preperiod << "  period " << period
+              << "  digits " << digits << "\n";
+    std::cout << "re " << r.re << "\n";
+    std::cout << "im " << r.im << "\n";
+    std::cout << "newton_steps " << r.newton_steps << "\n";
+    std::cout << "log10_residual " << r.log10_residual << "\n";
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -519,6 +712,8 @@ int main(int argc, char** argv) {
     if (cmd == "coverage") return cmd_coverage(argc, argv);
     if (cmd == "nucleus") return cmd_nucleus(argc, argv);
     if (cmd == "misiurewicz") return cmd_misiurewicz(argc, argv);
+    if (cmd == "family") return cmd_family(argc, argv);
+    if (cmd == "family-point") return cmd_family_point(argc, argv);
     if (cmd == "info") return cmd_info();
     if (cmd == "-h" || cmd == "--help" || cmd == "help") { usage(); return 0; }
     std::cerr << "unknown command: " << cmd << "\n";

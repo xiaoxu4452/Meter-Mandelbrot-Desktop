@@ -1,10 +1,10 @@
 // ---------------------------------------------------------------------------
-// mset_backend.h - bridge from the shell's tile jobs to the C++ core.
+// mset_backend.h - bridge from the shell's tile jobs to the reconstructed core.
 //
 // The shell keeps its framework: WebView2 owns the panels, the page decides
 // which tiles to render, the D3D11 child window presents them.  Only the
-// pixel producer changes: this module renders with the C++
-// core (native/mset) instead of the old stitched engine.
+// pixel producer changes: this module renders with the reconstructed
+// Retinamandelbrot core (native/mset) instead of the old stitched engine.
 //
 // It exposes plain types on purpose.  The core has its own Image / Palette /
 // RGB and a global precision setting; none of that leaks into host.cpp.
@@ -53,7 +53,9 @@ struct Gradient {
 // Render the rectangle (x,y,w,h) of a viewW x viewH frame whose centre is
 // `centerRe`/`centerIm` and whose full width is spanMant * 2^spanExp.
 // `mode` is 0 = Mandelbrot, 1 = Julia; `kind` selects the family (0 = z^2+c,
-// the only one the core and this bridge currently agree on).
+// 1 tricorn, 2 burning ship, 3 celtic, 4 perpendicular, 5 phoenix,
+// 6 a user expression in `expr`).  Kind 6 expressions are parsed by
+// src/mathx/expr.cpp; `params` carries "a=0.5;b=1" for their sliders.
 // `rotation` is the view angle in radians (0 = upright).  `grad` may be null,
 // in which case the core's built-in sine palette is used.
 // Pixels are written as BGRA into `rgba`, which must point at the tile's own
@@ -67,10 +69,12 @@ bool RenderTile(const char* centerRe, const char* centerIm,
                 int paletteIndex, int colorMode, bool invert,
                 double rotation, const Gradient* grad,
                 uint8_t* rgba, int outPitch,
-                const std::atomic<bool>* cancel, Result* out);
+                const std::atomic<bool>* cancel, Result* out,
+                const char* expr = nullptr, const char* params = nullptr);
 
-// True when the core can describe this request at all (used to decide
-// fallback before allocating work).
+// True when the bridge can describe this request at all (used to decide
+// fallback before allocating work).  Every family is supported at every
+// depth: the folded ones go through src/mathx/families.cpp.
 bool Supports(int mode, int kind, int power);
 
 // Render the colour field for a whole frame, in the shell's native layout:
@@ -84,6 +88,7 @@ bool RenderField(const char* centerRe, const char* centerIm,
                  int maxIter, int mode, int kind, int power,
                  const char* juliaRe, const char* juliaIm,
                  int colorMode, double rotation, int channels,
-                 float* field, const std::atomic<bool>* cancel, Result* out);
+                 float* field, const std::atomic<bool>* cancel, Result* out,
+                 const char* expr = nullptr, const char* params = nullptr);
 
 }  // namespace msetb

@@ -1,21 +1,19 @@
 @echo off
 setlocal
 rem ---------------------------------------------------------------------------
-rem Desktop build.  One renderer (the C++ core), one shell
+rem Desktop build.  One renderer (the reconstructed core), one shell
 rem (Win32 + WebView2), one UI snapshot bundled into the exe.
 rem Output: ..\Mandelbrot View.exe
 rem
-rem MB_CORE is the single source of truth for the renderer: the core in this
-rem checkout's src\ (deep.cpp + exact oracle).  The shell
+rem MB_CORE is the single source of truth for the renderer: the rebuilt core in
+rem C:\Users\harve\Desktop\mande\new\src (deep.cpp + exact oracle).  The shell
 rem keeps its framework -- WebView2 panels, tile scheduling, the D3D11 child
 rem window -- and only borrows the pixels.  Nothing under core\ draws any more;
 rem it stays linked so the fallback families still work.
 rem ---------------------------------------------------------------------------
 set "SRC=%~dp0"
 set "OUT=%~dp0..\Mandelbrot View.exe"
-rem MB_CORE is the single source of truth for the renderer.  In this checkout
-rem it is the sibling src\ directory; override it to build against another tree.
-if not defined MB_CORE set "MB_CORE=%~dp0..\src"
+if not defined MB_CORE set "MB_CORE=C:\Users\harve\Desktop\mande\new\src"
 
 call "%SRC%env-msvc.bat" || exit /b 1
 set "WV=%SRC%third_party\webview2"
@@ -59,6 +57,9 @@ cl /nologo /O2 /Oi /Ot /Ob3 /GL /Gy /MT /EHsc /std:c++17 /utf-8 /DNDEBUG /arch:A
   /Fo"%SRC%build\\" ^
   "%SRC%shell\mset_backend.cpp" ^
   "%MB_CORE%\bigfloat.cpp" ^
+  "%MB_CORE%\mathx\bigmath.cpp" ^
+  "%MB_CORE%\mathx\expr.cpp" ^
+  "%MB_CORE%\mathx\families.cpp" ^
   "%MB_CORE%\gmp_bridge.cpp" ^
   "%MB_CORE%\dive.cpp" ^
   "%MB_CORE%\reference.cpp" ^

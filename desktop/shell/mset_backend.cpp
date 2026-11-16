@@ -6,6 +6,11 @@
 #include "render.hpp"
 #include "viewport.hpp"
 
+#include "mathx/expr.hpp"
+#include "mathx/families.hpp"
+
+#include <map>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -41,7 +46,7 @@ namespace {
 
 /* span = mant * 2^exp, possibly 2^-10000.  A double cannot hold the value, so
  * only its decimal logarithm is computed and the mantissa/exponent pair is
- * derived from that.  Relative error is ~1e-15, i.e. a millionth of a pixel
+ * recovered from that.  Relative error is ~1e-15, i.e. a millionth of a pixel
  * at any depth. */
 void decimal_span(double mant, int exp2, double& out_m, int& out_e) {
     if (!(mant > 0.0)) { out_m = 1.0; out_e = 0; return; }
@@ -114,10 +119,103 @@ void sample_gradient(const msetb::Gradient& g, double t, RGB& out) {
 
 namespace msetb {
 
+
+namespace {
+
+/* A parsed user formula, cached by source text and precision: a tile pass asks
+ * once per tile, and re-parsing a 200-digit expression per tile is pure cost. */
+struct FormulaCache {
+    std::mutex mu;
+    std::string src;
+    int digits = 0;
+    mx::Program prog;
+    bool ready = false;
+};
+FormulaCache g_formula;
+
+bool compile_formula(const std::string& src, int digits, mx::Program& out) {
+    if (src.empty()) return false;
+    std::lock_guard<std::mutex> lk(g_formula.mu);
+    if (g_formula.ready && g_formula.src == src && g_formula.digits == digits) {
+        out = g_formula.prog;
+        return true;
+    }
+    try {
+        mx::Program p = mx::compile(src, digits);
+        g_formula.prog = p;
+        g_formula.src = src;
+        g_formula.digits = digits;
+        g_formula.ready = true;
+        out = p;
+        return true;
+    } catch (const std::exception&) {
+        g_formula.ready = false;
+        return false;
+    }
+}
+
+/* "a=0.5;b=1" -> slider values, in the program's own parameter order. */
+void bind_params(const mx::Program& prog, const char* params,
+                 std::vector<double>& out) {
+    out.assign(prog.params.size(), 0.0);
+    if (!params || !*params) return;
+    std::map<std::string, double> kv;
+    const char* p = params;
+    while (*p) {
+        while (*p == ';' || *p == ',' || *p == ' ') ++p;
+        const char* eq = std::strchr(p, '=');
+        if (!eq) break;
+        std::string name(p, (size_t)(eq - p));
+        const double v = std::atof(eq + 1);
+        kv[name] = v;
+        const char* semi = std::strchr(eq, ';');
+        if (!semi) semi = std::strchr(eq, ',');
+        if (!semi) break;
+        p = semi + 1;
+    }
+    for (size_t i = 0; i < prog.params.size(); ++i) {
+        auto it = kv.find(prog.params[i]);
+        if (it != kv.end()) out[i] = it->second;
+    }
+}
+
+/* Shared body of the family field/tile paths.  `ps` is plane units per pixel,
+ * `digits` the working precision the caller already planned. */
+bool render_family(const std::string& cre, const std::string& cim,
+                   const std::string& jre, const std::string& jim,
+                   const mx::Fexp& ps, int viewW, int viewH, int maxIter,
+                   int mode, int kind, const char* expr, const char* params,
+                   double rotation, std::vector<PixelOut>& px, mx::FamilyStats& st,
+                   const std::atomic<bool>* cancel) {
+    mx::Program prog;
+    if (kind == 6 && !compile_formula(expr ? expr : "", 220, prog)) return false;
+    std::vector<double> pv;
+    if (kind == 6) bind_params(prog, params, pv);
+
+    mx::FamilyView v;
+    v.kind = kind;
+    v.mode = mode;
+    v.formula = kind == 6 ? &prog : nullptr;
+    v.centerRe = cre;
+    v.centerIm = cim;
+    v.juliaRe = jre;
+    v.juliaIm = jim;
+    v.width = viewW;
+    v.height = viewH;
+    v.maxiter = maxIter > 0 ? maxIter : 600;
+    v.ps = ps;
+    v.rotCos = std::cos(rotation);
+    v.rotSin = std::sin(rotation);
+    v.cancel = cancel;
+    return mx::renderFamily(v, px, &st);
+}
+
+}  // namespace
+
 bool Supports(int mode, int kind, int power) {
-    /* Family 0 is z^2+c; the bridge does not transpose the folded families yet,
-     * and guessing would be worse than falling back. */
-    return (mode == 0 || mode == 1) && kind == 0 && power == 2;
+    (void)power;
+    if (mode != 0 && mode != 1) return false;
+    return kind >= 0 && kind <= 6;
 }
 
 bool RenderTile(const char* centerRe, const char* centerIm,
@@ -128,7 +226,8 @@ bool RenderTile(const char* centerRe, const char* centerIm,
                 int paletteIndex, int colorMode, bool invert,
                 double rotation, const Gradient* grad,
                 uint8_t* rgba, int outPitch,
-                const std::atomic<bool>* cancel, Result* out) {
+                const std::atomic<bool>* cancel, Result* out,
+                const char* expr, const char* params) {
     Result local;
     Result* r = out ? out : &local;
     *r = Result();
@@ -143,6 +242,85 @@ bool RenderTile(const char* centerRe, const char* centerIm,
     if (x < 0 || y < 0 || x + w > viewW || y + h > viewH) {
         r->error = "rectangle outside the frame";
         return false;
+    }
+
+    /* Families and formulas: render the frame once, hand back the rectangle.
+     * The page's default path is the field pass (the shader colours it); this
+     * tile path exists for the native canvas and for headless checks. */
+    if (kind != 0) {
+        try {
+            double full_m = 1.0;
+            int full_e = 0;
+            decimal_span(spanMant, spanExp, full_m, full_e);
+            Viewport vp;
+            vp.zoom_mantissa = 3.0 / full_m;
+            vp.zoom_exp10 = -(int64_t)full_e;
+            normalize(vp.zoom_mantissa, vp.zoom_exp10);
+            vp.width = viewW;
+            vp.height = viewH;
+            const int digits = (int)std::clamp(vp.log10_zoom() + 80.0, 60.0, 1200000.0);
+            BigFloat::precision_limbs = std::max(128, digits / 9 + 8);
+            vp.center_re = BigFloat::from_string(centerRe);
+            vp.center_im = BigFloat::from_string(centerIm);
+            vp.recalc();
+            std::vector<PixelOut> px;
+            mx::FamilyStats fs;
+            if (!render_family(vp.center_re.to_fixed(digits),
+                               vp.center_im.to_fixed(digits),
+                               (juliaRe && *juliaRe) ? juliaRe : "",
+                               (juliaIm && *juliaIm) ? juliaIm : "",
+                               vp.pixel_scale(), viewW, viewH, maxIter, mode, kind,
+                               expr, params, rotation, px, fs, cancel)) {
+                r->error = "family render failed";
+                return false;
+            }
+            const Palette pal = Palette::by_name("rainbow");
+            const double band = fs.escMax > fs.escMin ? (fs.escMax - fs.escMin) / 8.0 : 64.0;
+            for (int row = 0; row < h; ++row) {
+                for (int col = 0; col < w; ++col) {
+                    const PixelOut& p = px[(size_t)(y + row) * viewW + (size_t)(x + col)];
+                    uint8_t* dst = rgba + (size_t)row * (size_t)outPitch * 4 + (size_t)col * 4;
+                    uint8_t cr = 0, cg = 0, cb = 0;
+                    if (!p.interior) {
+                        double t = p.smooth / band * 6.283185307179586;
+                        RGB c = grad ? RGB{0, 0, 0} : pal.eval(t);
+                        if (grad) {
+                            double u = p.smooth / std::max(1.0, band);
+                            u = u - std::floor(u);
+                            for (int i = 1; i < grad->count; ++i) {
+                                if (u <= grad->pos[i] || i == grad->count - 1) {
+                                    const double p0 = grad->pos[i - 1], p1 = grad->pos[i];
+                                    const double a = p1 > p0 ? std::clamp((u - p0) / (p1 - p0), 0.0, 1.0) : 0.0;
+                                    c.r = grad->rgb[i - 1][0] + (grad->rgb[i][0] - grad->rgb[i - 1][0]) * a;
+                                    c.g = grad->rgb[i - 1][1] + (grad->rgb[i][1] - grad->rgb[i - 1][1]) * a;
+                                    c.b = grad->rgb[i - 1][2] + (grad->rgb[i][2] - grad->rgb[i - 1][2]) * a;
+                                    break;
+                                }
+                            }
+                        }
+                        if (invert) { c.r = 1 - c.r; c.g = 1 - c.g; c.b = 1 - c.b; }
+                        cr = (uint8_t)std::clamp(c.r * 255.0 + 0.5, 0.0, 255.0);
+                        cg = (uint8_t)std::clamp(c.g * 255.0 + 0.5, 0.0, 255.0);
+                        cb = (uint8_t)std::clamp(c.b * 255.0 + 0.5, 0.0, 255.0);
+                    }
+                    dst[0] = cb; dst[1] = cg; dst[2] = cr; dst[3] = 255;
+                }
+            }
+            r->ok = true;
+            r->ms = fs.ms;
+            r->refLen = fs.refLen;
+            r->digits = fs.digits;
+            r->glitches = (int)fs.glitches;
+            r->maxEscape = fs.escMax;
+            r->minEscape = fs.escMin;
+            r->bounded = fs.bounded;
+            r->iterPerCycle = band;
+            return true;
+        } catch (const std::exception& e) {
+            g_error = e.what();
+            r->error = g_error.c_str();
+            return false;
+        }
     }
 
     try {
@@ -400,7 +578,8 @@ bool RenderField(const char* centerRe, const char* centerIm,
                  int maxIter, int mode, int kind, int power,
                  const char* juliaRe, const char* juliaIm,
                  int colorMode, double rotation, int channels,
-                 float* field, const std::atomic<bool>* cancel, Result* out) {
+                 float* field, const std::atomic<bool>* cancel, Result* out,
+                 const char* expr, const char* params) {
     Result local;
     Result* r = out ? out : &local;
     *r = Result();
@@ -411,6 +590,63 @@ bool RenderField(const char* centerRe, const char* centerIm,
     if (!Supports(mode, kind, power)) {
         r->error = "family not bridged";
         return false;
+    }
+
+    /* Folded families and user expressions: their own engine (src/mathx), the
+     * same view arithmetic.  The field layout is identical, so the page's
+     * shader cannot tell which producer filled it. */
+    if (kind != 0) {
+        try {
+            double full_m = 1.0;
+            int full_e = 0;
+            decimal_span(spanMant, spanExp, full_m, full_e);
+            Viewport vp;
+            vp.zoom_mantissa = 3.0 / full_m;
+            vp.zoom_exp10 = -(int64_t)full_e;
+            normalize(vp.zoom_mantissa, vp.zoom_exp10);
+            vp.width = viewW;
+            vp.height = viewH;
+            const int digits = (int)std::clamp(vp.log10_zoom() + 80.0, 60.0, 1200000.0);
+            BigFloat::precision_limbs = std::max(128, digits / 9 + 8);
+            vp.center_re = BigFloat::from_string(centerRe);
+            vp.center_im = BigFloat::from_string(centerIm);
+            vp.recalc();
+            std::vector<PixelOut> px;
+            mx::FamilyStats fs;
+            if (!render_family(vp.center_re.to_fixed(digits),
+                               vp.center_im.to_fixed(digits),
+                               (juliaRe && *juliaRe) ? juliaRe : "",
+                               (juliaIm && *juliaIm) ? juliaIm : "",
+                               vp.pixel_scale(), viewW, viewH, maxIter, mode, kind,
+                               expr, params, rotation, px, fs, cancel)) {
+                r->error = "family render failed";
+                return false;
+            }
+            const size_t n = (size_t)viewW * (size_t)viewH;
+            for (size_t i = 0; i < n; ++i) {
+                const PixelOut& p = px[i];
+                field[i * (size_t)channels] = p.interior ? -1.0f : (float)p.smooth;
+                if (channels > 1) field[i * (size_t)channels + 1] = 0.0f;
+                if (channels > 2) field[i * (size_t)channels + 2] = (float)p.iter;
+                if (channels > 3) field[i * (size_t)channels + 3] = 0.0f;
+            }
+            if (channels > 4)
+                std::memset(field + n * 4, 0, n * (size_t)(channels - 4) * sizeof(float));
+            r->ok = true;
+            r->ms = fs.ms;
+            r->refLen = fs.refLen;
+            r->digits = fs.digits;
+            r->glitches = (int)fs.glitches;
+            r->maxEscape = fs.escMax;
+            r->minEscape = fs.escMin;
+            r->bounded = fs.bounded;
+            r->iterPerCycle = fs.escMax > fs.escMin ? (fs.escMax - fs.escMin) / 8.0 : 0.0;
+            return true;
+        } catch (const std::exception& e) {
+            g_error = e.what();
+            r->error = g_error.c_str();
+            return false;
+        }
     }
 
     try {

@@ -463,13 +463,12 @@ input[type="range"]:focus::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--ac
 .grad-fill {
   position: absolute; inset: 0; border-radius: 4px;
   pointer-events: none;
-  /* The full ramp is painted three bars wide; each lane pans to its own third. */
+  /* The full ramp is painted one bar wide per stacked row; the size and the
+   * pan position are set per bar by syncPaletteStrip(), because the number of
+   * rows grows with the number of stops (3 minimum, 15 handles per bar). */
   background-repeat: no-repeat;
   background-size: 300% 100%;
 }
-.grad-bar[data-zone="1"] .grad-fill { background-position: 0% 0; }
-.grad-bar[data-zone="2"] .grad-fill { background-position: 50% 0; }
-.grad-bar[data-zone="3"] .grad-fill { background-position: 100% 0; }
 .grad-lane-tag {
   position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
   z-index: 2; pointer-events: none;
@@ -544,7 +543,7 @@ input[type="range"]:focus::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--ac
 .scheme-view-row .btn { flex: 0 0 auto; }
 
 /* ---- official Julia preview window -------------------------------------
- * The reference pins a 56x56 viewport top-right (design-note.c:130-155).  Here
+ * The reference pins a 56x56 viewport top-right (004169c0.c:130-155).  Here
  * it is the first block of the console and scrolls with everything else, so
  * it belongs to the settings rather than floating over the picture.
  * It is a real WebGL surface, not a screenshot of the main canvas: it has
@@ -651,9 +650,12 @@ body.julia-picking #fractal { cursor: crosshair; }
   width: 34px; padding-left: 10px; font-family: var(--mono); font-weight: 700;
   font-size: 11.5px;
 }
-.tone-grid .row.gain:nth-of-type(2) > label.gain-lab { color: #e8746f; }
-.tone-grid .row.gain:nth-of-type(3) > label.gain-lab { color: #79c98a; }
-.tone-grid .row.gain:nth-of-type(4) > label.gain-lab { color: #6ea8fe; }
+/* Named classes, not :nth-of-type: the tone grid gained rows (contrast,
+ * gamma, saturation) and positional selectors silently painted them red,
+ * green and blue while R/G/B fell back to the body colour. */
+.tone-grid .row.gain > label.gain-r { color: #e8746f; }
+.tone-grid .row.gain > label.gain-g { color: #79c98a; }
+.tone-grid .row.gain > label.gain-b { color: #6ea8fe; }
 .tone-grid > .btn { grid-column: 1 / -1; margin-top: 2px; }
 
 /* Rows the active scheme cannot consume are shown dimmed and non-interactive
@@ -1184,13 +1186,16 @@ body.panel-closed .panel { display: none; }
    ========================================================== */
 .pal-edit { display: flex; flex-direction: column; gap: 10px; }
 
-.pal-preview {
-  position: relative; height: 34px; border-radius: 8px;
-  border: 1px solid var(--line);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .18);
-  /* Room for the stop handles, which hang below the ramp without intruding. */
-  margin-bottom: 18px;
+/* The colour set's ruler: one bar per 25 handles, a new bar below as soon as
+ * one fills up.  The gap leaves room for the handles hanging under each ramp. */
+.pal-stack {
+  display: flex; flex-direction: column; gap: 26px;
+  margin-bottom: 16px;
   touch-action: none;
+}
+.pal-stack .grad-bar {
+  height: 18px; border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .18);
 }
 
 .pal-stops {
@@ -1234,7 +1239,7 @@ body.panel-closed .panel { display: none; }
     radial-gradient(60% 55% at 50% 45%, rgba(12, 14, 18, 0.55), rgba(6, 7, 10, 0.86) 78%);
   backdrop-filter: blur(12px) saturate(125%);
   -webkit-backdrop-filter: blur(12px) saturate(125%);
-  transition: opacity .55s cubic-bezier(.4, 0, .2, 1), visibility .55s;
+  transition: opacity .34s cubic-bezier(.4, 0, .2, 1), visibility .34s;
 }
 [data-theme="light"] .boot {
   background: radial-gradient(60% 55% at 50% 45%, rgba(255,255,255,.55), rgba(233,235,239,.9) 78%);
@@ -1262,6 +1267,24 @@ body.booting .hud {
 }
 
 .boot-mark { color: var(--accent); opacity: .9; margin-bottom: 16px; }
+/* The product icon, not a generic glyph: the same artwork the taskbar and the
+ * title bar show, so the splash and the running app are visibly one product. */
+.boot-icon {
+  width: 108px; height: 108px;
+  border-radius: 26px;
+  margin-bottom: 24px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, .07),
+    0 18px 48px rgba(0, 0, 0, .55),
+    0 0 46px rgba(110, 168, 254, .18);
+  filter: saturate(1.06);
+}
+[data-theme="light"] .boot-icon {
+  box-shadow:
+    0 0 0 1px rgba(20, 30, 50, .08),
+    0 16px 40px rgba(20, 30, 50, .18),
+    0 0 40px rgba(110, 168, 254, .22);
+}
 .boot-title {
   font: 300 21px/1 var(--font);
   letter-spacing: .42em; text-indent: .42em;

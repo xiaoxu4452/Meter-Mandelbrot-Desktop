@@ -26,14 +26,8 @@
 <!-- 启动加载层（完成后淡出） -->
 <div class="boot" id="boot">
   <div class="boot-inner">
-    <div class="boot-mark">
-      <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="0.9">
-        <circle cx="9" cy="12" r="7"/>
-        <circle cx="16" cy="12" r="4.2"/>
-        <circle cx="16" cy="12" r="1.4" fill="currentColor" stroke="none"/>
-      </svg>
-    </div>
-    <div class="boot-title">MANDELBROT</div>
+    <img class="boot-icon" src="assets/icon-256.png" alt="Mandelbrot View" width="108" height="108">
+    <div class="boot-title">MANDELBROT VIEW</div>
     <div class="boot-sub" data-i18n="appSub">精密分形观测台</div>
     <div class="boot-bar"><div class="boot-fill" id="boot-fill"></div></div>
     <div class="boot-meta">
@@ -152,7 +146,7 @@
   </div>
 
   <div class="panel-body" id="panel-body">
-    <!-- The reference's second VIEWPORT (design-note.c): a Julia set for the
+    <!-- The reference's second VIEWPORT (00406070.c): a Julia set for the
          Mandelbrot point under the cursor.  It scrolls with the settings below
          it, and clicking it opens that set in the main view (the title then
          turns into the way back).  Its own WebGL surface is compiled from the
@@ -286,35 +280,19 @@
         </button>
       </div>
       <div class="grad-ed" id="grad-ed">
-        <!-- Three full-width ramps stacked vertically: each one is one third of
-             the palette stretched to the full width, so a stop can be placed
-             three times more precisely than on a single bar. -->
-        <div class="grad-stack" id="grad-stack">
-          <div class="grad-lane" data-zone="1">
-            <div class="grad-bar" data-zone="1" title="点击空白处添加色标，拖动色标改变位置，双击删除">
-              <div class="grad-fill"></div>
-              <div class="grad-handles"></div>
-            </div>
-          </div>
-          <div class="grad-lane" data-zone="2">
-            <div class="grad-bar" data-zone="2" title="点击空白处添加色标，拖动色标改变位置，双击删除">
-              <div class="grad-fill"></div>
-              <div class="grad-handles"></div>
-            </div>
-          </div>
-          <div class="grad-lane" data-zone="3">
-            <div class="grad-bar" data-zone="3" title="点击空白处添加色标，拖动色标改变位置，双击删除">
-              <div class="grad-fill"></div>
-              <div class="grad-handles"></div>
-            </div>
-          </div>
-        </div>
+        <!-- Full-width ramps stacked vertically, each showing one equal slice
+             of the palette stretched to the full width so a stop can be placed
+             far more precisely than on a single bar.  Three bars is the floor;
+             a bar that fills up with 15 handles grows another one below it,
+             which is why this stack is built by the script (gradLanesHtml) and
+             not written out here. -->
+        <div class="grad-stack" id="grad-stack"></div>
         <div class="grad-row">
           <input type="color" id="grad-color" class="grad-color" value="#ffffff"/>
           <input class="ctl mono num" id="grad-pos" type="number" min="0" max="1" step="0.001" value="0"/>
           <button class="btn tiny" id="grad-add" data-i18n="gradAdd">加色标</button>
           <button class="btn tiny" id="grad-del" data-i18n="gradDel">删色标</button>
-          <button class="btn tiny" id="grad-reset" data-i18n="gradReset">重置</button>
+          <button class="btn tiny" id="grad-reset" data-i18n="gradReset">还原</button>
         </div>
       </div>
       <div class="row">
@@ -369,13 +347,22 @@
         <div class="row tight"><label data-i18n="brightness">亮度</label>
           <input type="range" id="rng-bri" min="0.2" max="2" step="0.01" value="1"/>
           <span class="val mono" id="val-bri">1.00</span></div>
-        <div class="row tight gain"><label class="gain-lab">R</label>
+        <div class="row tight"><label data-i18n="contrast">对比</label>
+          <input type="range" id="rng-con" min="0.5" max="2" step="0.01" value="1"/>
+          <span class="val mono" id="val-con">1.00</span></div>
+        <div class="row tight"><label data-i18n="gamma">伽马</label>
+          <input type="range" id="rng-gam" min="0.4" max="2.5" step="0.01" value="1"/>
+          <span class="val mono" id="val-gam">1.00</span></div>
+        <div class="row tight"><label data-i18n="saturation">饱和</label>
+          <input type="range" id="rng-sat" min="0" max="2" step="0.01" value="1"/>
+          <span class="val mono" id="val-sat">1.00</span></div>
+        <div class="row tight gain"><label class="gain-lab gain-r">R</label>
           <input type="range" id="rng-gr" min="0.5" max="1.5" step="0.01" value="1"/>
           <span class="val mono" id="val-gr">1.00</span></div>
-        <div class="row tight gain"><label class="gain-lab">G</label>
+        <div class="row tight gain"><label class="gain-lab gain-g">G</label>
           <input type="range" id="rng-gg" min="0.5" max="1.5" step="0.01" value="1"/>
           <span class="val mono" id="val-gg">1.00</span></div>
-        <div class="row tight gain"><label class="gain-lab">B</label>
+        <div class="row tight gain"><label class="gain-lab gain-b">B</label>
           <input type="range" id="rng-gb" min="0.5" max="1.5" step="0.01" value="1"/>
           <span class="val mono" id="val-gb">1.00</span></div>
         <button class="btn tiny" id="btn-tone-reset" data-i18n="toneReset">重置色调</button>

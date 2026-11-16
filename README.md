@@ -3,8 +3,8 @@
 [中文说明 / Chinese README](README.zh.md)
 
 A scientific deep-zoom Mandelbrot / Julia engine with a Win32 + WebView2
-desktop application and a portable C++20 command-line renderer. Version 0.9
-(2026-11-14).
+desktop application and a portable C++20 command-line renderer. Version 0.10
+(2026-11-16).
 
 The engine reaches **10^60000** magnification in well under a second on an
 analytically periodic centre, and its perturbation output is **byte-identical
@@ -45,6 +45,7 @@ which is the scriptable, verifiable, batch-capable renderer.
 
 | Path | Contents |
 | --- | --- |
+| `src/mathx/` | The applied-mathematics library: arbitrary-precision elementary functions, the formula parser/VM, the complex layer and the deep family engine (see section 5). |
 | `src/` | The renderer: `deep.cpp` (perturbation + AVX2 quad kernel), `reference.cpp` (orbit + series approximation), `bigfloat.cpp`, `floatexp.hpp`, `gmp_bridge.cpp`, `dive.cpp` (Newton nucleus / Misiurewicz), `render.cpp`, `main.cpp`, headers. Only the listed translation units take part in the build. |
 | `tests/` | `b2/` verification programs: `cmp`, `bench`, `shot`, `trace`, `sa`, `sareplay`, `gmporbit`, `gmpbench`, `parsewidth`, … |
 | `desktop/` | Windows application: `shell/` (Win32 + WebView2 host, 4-channel field bridge, D3D11 canvas), `ui/` (embedded HTML/CSS/JS workbench), `core/`, `gpu/`, `tools/` (UI resource generator), `third_party/` (vendored SDK headers and import libraries), `build.bat`. |
@@ -81,6 +82,12 @@ buildapp.bat                    :: dist\Mandelbrot View.exe + mset.exe + libgmp-
 `buildapp.bat` points `MB_CORE` at this tree's `src\` and the shell at
 `desktop\`, so the whole product is reproducible from a single checkout.
 
+On start-up the host window stays hidden until the page has painted its own
+splash (icon, wordmark, progress rail), and the shader-compiling subsystems are
+brought up after the first frame. The window therefore never shows the black
+rectangle that WebView2 needs while it creates its renderer and parses the
+bundle; a picture follows about a second later.
+
 ## 4. Using the command line
 
 ```bat
@@ -110,7 +117,56 @@ A/B switches (performance only, never change the picture):
 | `B2_REFCAP=N` | fix the reference-orbit step ceiling |
 | `B2_TIME=1` | print per-pass / per-orbit timings and glitch distribution |
 
-## 5. How the renderer works
+## 5. The applied-mathematics library (`src/mathx`)
+
+`z^2 + c` is not the only map the engine can draw. `src/mathx` is a small,
+self-contained numerical library:
+
+* `bigmath.cpp` — division, square root, `exp`, `log`, `sin`/`cos`, `atan`,
+  `pow` and the constants pi / ln10 at arbitrary decimal precision, built on
+  the same base-10^9 BigFloat the deep renderer uses. Every function is total
+  (division by zero is zero, `log(0)` is zero), so one divergent pixel cannot
+  abort a frame.
+* `expr.cpp` — lexer + Pratt parser + postfix VM for user formulas. Variables
+  `z, c, n, z1`; constants `i, pi, e`; single-letter parameters; implicit
+  multiplication (`2z`, `3(z+1)`); functions `sin cos tan asin acos atan sinh
+  cosh tanh exp log ln log10 sqrt abs abs2 arg conj re im pow min max atan2
+  floor ceil round sign if`, plus comparisons. Parse errors carry a byte
+  offset, which is what the formula panel shows.
+* `complex.hpp` — the complex layer over BigFloat.
+* `families.cpp` — deep rendering for the folded families and for formulas.
+
+The folded families (tricorn, burning ship, celtic, perpendicular, phoenix) use
+an **exact** delta recurrence: the fold signs come from the reference orbit, so
+there is no Taylor truncation and a 1e120 frame is as exact as a 1e2 one. A
+user formula uses a second-order Taylor perturbation whose derivatives are
+taken from the arbitrary-precision reference by central differences.
+
+```bat
+mset family --kind tricorn --center-re <220 digits> --center-im 0 ^
+            --zoom 1e120 --width 800 --height 500 --out tricorn.png
+mset family --kind formula --expr "sin(z)^2 + c" --zoom 1e30 --out fx.png
+mset family-point --kind tricorn --preperiod 3 --period 1 --digits 220 ^
+                  --guess-re -1.5437
+```
+
+`family-point` solves `z_{m+p}(c) = z_m(c)` with a 2x2 Newton iteration and
+central-difference Jacobians: `--preperiod 0` finds a nucleus, `--preperiod > 0`
+a Misiurewicz point. That is how a 220-digit boundary coordinate is produced —
+only the boundary carries structure at 1e120.
+
+Measured here: tricorn 360x220 at 1e120, 2500 iterations, four reference
+orbits — 81 ms, reference length 2501, escapes 534..583. The desktop
+application uses the same engine for family views and for formulas deeper than
+1e13; the formula panel's JS evaluator keeps the shallow frames, where its rich
+syntax (sums, products, piecewise) is the better trade.
+
+Unit checks: `tests\bigmath.bat` (elementary functions against known decimal
+expansions) and `tests\family.bat` (expression parsing, each delta recurrence
+against `F(Z+d)-F(Z)` in full precision, and every pixel of 1e60 / 1e120 frames
+against a direct BigFloat iteration).
+
+## 6. How the renderer works
 
 Reference orbit + perturbation + series approximation. The reference is built
 in GMP `mpf` at `depth digits + 50 guard bits`; per-pixel arithmetic uses a
@@ -138,7 +194,7 @@ enforced throughout `src/deep.cpp` and `src/reference.cpp`:
 See [docs/ALGORITHM.md](docs/ALGORITHM.md) for the full derivation, the SA
 criterion, periodic centres and the Newton solvers.
 
-## 6. Verified results
+## 7. Verified results
 
 | Check | Result |
 | --- | --- |
@@ -151,12 +207,17 @@ criterion, periodic centres and the Newton solvers.
 | 1e60000 at `c=i`, 160×100, maxiter 200000 | 0.65 s (was > 20 min, no frame) |
 | AVX2 four-wide `iterate_quad_d` | 33 → 8 ms main loop, byte-identical to scalar |
 | GMP step cost (6000…120000 bits) | 22 / 43 / 106 / 463 / 980 µs, no FFT threshold |
+| Tricorn 360×220 at 1e120, 2500 iters, 4 reference orbits | 81 ms, reference length 2501, escapes 534..583 |
+| Family frames vs direct BigFloat iteration (16×12, 1e60 and 1e120) | escapes identical; 2/192 pixels move ≤5 iterations on a fold of celtic |
+| Delta recurrences vs `F(Z+d)-F(Z)` (400 random cases × 5 families) | worst relative error 6.2e-16 |
+| BigFloat elementary functions (72 digits) | sqrt2 / e / ln2 / pi / sin1 / cos1 / atan1 / ln10 all match |
+| Desktop start to a picture | ~1.6 s (window appears already carrying the branded splash; no black frame) |
 
 `mset nucleus` solves Example 14 to period 11196 (200 digits 0.2 s, 6100
 digits 21 s); `mset misiurewicz --m 2 --p 2` returns `0+1i`, `(3,1)` returns
 `-2`.
 
-## 7. Known limits
+## 8. Known limits
 
 - Exact period reuse is safe only for analytically periodic centres (`c=i`,
   `c=-2`). `MB_QUASI=1` relaxes the test but is off by default: a merely
@@ -165,9 +226,13 @@ digits 21 s); `mset misiurewicz --m 2 --p 2` returns `0+1i`, `(3,1)` returns
 - Recursive Newton diving from 1e73 to 1e6000 is not implemented.
 - Near the shallow chaotic boundary, double precision can differ from the
   oracle by ±1 iteration.
+- A pixel exactly on a fold of `|x^2-y^2|` / `|2xy|` (celtic, burning ship,
+  perpendicular) can take the other branch than the reference orbit; the escape
+  count then moves by a few iterations. Measured 2/192 pixels on a 1e60 celtic
+  frame, all ≤5 iterations.
 - The desktop GUI requires Windows; the WebView2 runtime must be installed.
 
-## 8. Licence
+## 9. Licence
 
 Project code: MIT (see [LICENSE](LICENSE)). Vendored third-party components
 keep their own licences — see [THIRD_PARTY.md](THIRD_PARTY.md). The renderer

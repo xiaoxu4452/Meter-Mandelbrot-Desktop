@@ -105,7 +105,45 @@ A/B 开关（只影响性能，不改画面）：
 | `B2_REFCAP=N` | 固定参考轨道步数上限 |
 | `B2_TIME=1` | 打印每趟 / 每条轨道耗时与 glitch 分布 |
 
-## 5. 渲染原理
+## 5. 应用数学库（`src/mathx`）
+
+引擎不只会画 `z^2 + c`。`src/mathx` 是一套自带的应用数学库：
+
+* `bigmath.cpp` — 在深度渲染同一套 base-10^9 BigFloat 上实现任意精度除法、
+  开方、`exp`、`log`、`sin`/`cos`、`atan`、`pow` 与常数 pi / ln10。所有函数都是
+  全定义的（除以 0 得 0，`log(0)` 得 0），单个发散像素不会中断整帧。
+* `expr.cpp` — 词法分析 + Pratt 语法分析 + 后缀虚拟机：变量 `z, c, n, z1`，
+  常数 `i, pi, e`，单字母参数，隐式乘法（`2z`、`3(z+1)`），函数 `sin cos tan
+  asin acos atan sinh cosh tanh exp log ln log10 sqrt abs abs2 arg conj re im
+  pow min max atan2 floor ceil round sign if` 以及比较运算；语法错误带字节位置。
+* `complex.hpp` — BigFloat 上的复数层。
+* `families.cpp` — 折叠族与自定义公式的深层渲染。
+
+折叠族（三叉戟、燃烧船、凯尔特、垂直、凤凰）使用**精确**的 δ 递推：折叠符号
+取自参考轨道，因此没有 Taylor 截断，10^120 与 10^2 一样精确。用户公式使用二阶
+Taylor 扰动，系数由任意精度参考轨道做中心差分得到。
+
+```bat
+mset family --kind tricorn --center-re <220 位> --center-im 0 ^
+            --zoom 1e120 --width 800 --height 500 --out tricorn.png
+mset family --kind formula --expr "sin(z)^2 + c" --zoom 1e30 --out fx.png
+mset family-point --kind tricorn --preperiod 3 --period 1 --digits 220 ^
+                  --guess-re -1.5437
+```
+
+`family-point` 用 2×2 Newton（中心差分雅可比）解 `z_{m+p}(c) = z_m(c)`：
+`--preperiod 0` 求原子域中心，`--preperiod > 0` 求 Misiurewicz 点。220 位的边界
+坐标就是这样来的——只有边界在 10^120 处仍有结构。
+
+本机实测：1e120 三叉戟 360×220、2500 次迭代、4 条参考轨道——81 ms，参考轨道
+2501 点，逃逸 534..583。桌面应用对族视图和 1e13 以深的公式使用同一引擎；浅层
+公式仍走公式面板自带的 JS 求值器（它支持求和、连乘、分段等更丰富的语法）。
+
+单元检查：`tests\bigmath.bat`（初等函数对照已知小数展开）与
+`tests\family.bat`（表达式解析、五个族的 δ 递推对 `F(Z+d)-F(Z)` 全精度比对、
+1e60/1e120 帧逐像素对照 BigFloat 直接迭代）。
+
+## 6. 渲染原理
 
 参考轨道 + 扰动 + 级数近似。参考轨道用 GMP `mpf` 按「深度位数 + 50 位保护位」
 构建；逐像素用 float-exp（double 尾数 + 整数指数），1e-250 以上自动切纯 double
@@ -125,7 +163,7 @@ A/B 开关（只影响性能，不改画面）：
 
 完整推导见 [docs/ALGORITHM.zh.md](docs/ALGORITHM.zh.md)。
 
-## 6. 实测数据
+## 7. 实测数据
 
 | 项目 | 结果 |
 | --- | --- |
@@ -142,7 +180,7 @@ A/B 开关（只影响性能，不改画面）：
 `mset nucleus` 对 Example 14 解出周期 11196（200 位 0.2 s，6100 位 21 s）；
 `mset misiurewicz --m 2 --p 2` 得 `0+1i`，`(3,1)` 得 `-2`。
 
-## 7. 已知限制
+## 8. 已知限制
 
 - 精确周期复用只对解析精确的周期中心（`c=i`、`c=-2`）安全。`MB_QUASI=1`
   放宽判据但默认关闭：只是"看似周期"的中心真实轨道会发散。
@@ -151,7 +189,7 @@ A/B 开关（只影响性能，不改画面）：
 - 浅视点混沌边界处 double 与 oracle 可能差 ±1 迭代。
 - 桌面 GUI 仅 Windows，需安装 WebView2 Runtime。
 
-## 8. 许可
+## 9. 许可
 
 本项目代码 MIT（见 [LICENSE](LICENSE)）；随仓库附带的第三方组件保留各自许可，
 见 [THIRD_PARTY.md](THIRD_PARTY.md)。渲染核心为参考公开算法文献独立实现的

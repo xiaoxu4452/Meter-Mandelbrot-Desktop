@@ -14,7 +14,7 @@ import { initGlassSelects } from './glass-select.js';
 import { composeTile } from './drawlib.js';
 import { SceneRenderer } from './glscene.js';
 import { MainGPU } from './wgpu/main.js';
-import { NATIVE, nativeUsable, nativeCapable, nativeRender, nativeCancel, nativeSetPaused, nativeThreads, nativeFrameReady, nativeFrameBegin, nativeFrameFlush, nativeCanvasMode, nativeCanvasPreview, nativeCanvasSetPreview, nativeCanvasExport, nativeGLOwned, nativeGLPresented, nativeSurfaceLive, nativeCanvasOwns, nativePreviewTarget, nativeLog, nativeField, nativePaletteTerms, nativeImportPreset, nativeExportPreset, nativeConfig, viewOp } from './native.js';
+import { NATIVE, nativeUsable, nativeCapable, nativeRender, nativeCancel, nativeSetPaused, nativeThreads, nativeFrameReady, nativeFrameBegin, nativeFrameFlush, nativeCanvasMode, nativeCanvasPreview, nativeCanvasSetPreview, nativeCanvasExport, nativeGLOwned, nativeGLPresented, nativeSurfaceLive, nativeCanvasOwns, nativePreviewTarget, nativeLog, nativeField, nativePaletteTerms, nativeImportPreset, nativeExportPreset, nativeConfig, viewOp, nativeSplashPainted } from './native.js';
 import { FieldRenderer, BUILTIN as GLSL_BUILTIN, CHANNEL, inferChannels,
          readColorschemes, writeColorschemes, newColorscheme } from './gpu.js';
 import { initJuliaView } from './juliaview.js';
@@ -130,7 +130,7 @@ const state = {
   stops: null,
   /* Tone stage.  Identity values reproduce the palette exactly, so the
    * default view is untouched by any of this. */
-  tone: { bri: 1, gr: 1, gg: 1, gb: 1 },
+  tone: { bri: 1, con: 1, gam: 1, sat: 1, gr: 1, gg: 1, gb: 1 },
   /* Render resolution as a multiple of CSS pixels, independent of the device's
    * own scale factor: 1 = CSS (fastest), 1.5, 2 = device pixels on this screen.
    * The gesture cadence already renders well below this (livePlan), so a lower
@@ -178,7 +178,7 @@ const prevCtx = prevCanvas.getContext('2d');
 /* ---------------- GPU shading surface ----------------
  *
  * The core sends the iteration field; this surface turns it into pixels with
- * the reference engine's own GLSL.  It is a separate canvas rather than a
+ * the reference program's own GLSL.  It is a separate canvas rather than a
  * second context on `#fractal` because the 2D context is how the CPU path,
  * the snapshot and the export all work — drawing through WebGL into the same
  * element would break every one of them.
@@ -639,7 +639,7 @@ function wgpuView() {
      * depth the same skip is what paints the large black contour arcs across
      * the frame — the block's affine map stops matching the true orbit long
      * before its residual test notices, and every block boundary shows up as a
-     * smooth curved band.  The reference renderer only uses its series while
+     * smooth curved band.  The recovered renderer only uses its series while
      * `delta` is inside `delta_max`; the honest equivalent here is to switch
      * it off once the frame is deep, where it saves <2 % of the iterations. */
     /* Series/bilinear approximation: OFF.
@@ -911,13 +911,13 @@ function autoIterFor(depth) {
 }
 
 /* ---------------- Observed iteration budget ----------------
- * `公开算法文献` has NO maxiter = f(zoom): `canvas->maxiter` is the
- * largest iteration actually OBSERVED.  The documented predicates live in
+ * `07_反汇编与伪代码` has NO maxiter = f(zoom): `canvas->maxiter` is the
+ * largest iteration actually OBSERVED.  The transcribed predicates live in
  * the desktop core's mb_core.h; these are the same constants:
- *   design-note.c:104-114  known*3+3000 / observed*5 / 0x2aaaa2da sentinel
- *   design-note.c:197      vertex recalc gate known*3+1000
- *   design-note.c:295      checkcanvas budget observed*5+10000
- *   design-note.c:185      idle_maxiter 0x7fffffff
+ *   0046f630.c:104-114  known*3+3000 / observed*5 / 0x2aaaa2da sentinel
+ *   0046f630.c:197      vertex recalc gate known*3+1000
+ *   00498d00.c:295      checkcanvas budget observed*5+10000
+ *   00429d50.c:185      idle_maxiter 0x7fffffff
  * autoIterFor() above stays as the FIRST guess for a view with no history.
  * A completed frame whose pixels really reached the cap then raises the
  * ceiling for the next pass.  Deliberately no automatic repaint: a repaint
@@ -975,7 +975,7 @@ function noteFrameObservation(cap, hi, bounded, starved) {
   if (hi > 0) rememberObservedDepth(depthNow(), hi | 0);
   /* "Exhausted" means pixels stopped AT the ceiling.  A backend that reports a
    * max escape well above the ceiling is reporting a different quantity (the
-   * C++ core counts interior steps too), not exhaustion; trusting it
+   * reconstructed core counts interior steps too), not exhaustion; trusting it
    * multiplied the home view's budget from 1626 to 6498 and made the first
    * full-resolution frame four times slower.
    *
@@ -997,16 +997,22 @@ function noteFrameObservation(cap, hi, bounded, starved) {
    * orbit stopped at the ceiling before escaping), so it leaps by sixteen
    * instead: as long as the orbits do escape, a generous ceiling costs
    * nothing, because a reference orbit stops the moment it escapes. */
+  /* A flat 80 000 is not a repair, it is a session-long tax: a shallow
+   * all-interior frame also reports hi === 0 with refLen === cap, so the rule
+   * fired on it and every later preset inherited that ceiling.  Measured on the
+   * web build: 12 preset switches went from 1.3 s to a 23 s frame while `iter`
+   * stayed at 80000/80000.  Scale the jump to THIS view's own depth. */
+  const starvedCap = Math.min(ITER.starvedCap, Math.max(4000, autoIterNow() * 2));
   const grow = starved ? 16 : 4;
-  const ceiling = starved ? ITER.starvedCap : ITER.safeCap;
+  const ceiling = starved ? starvedCap : ITER.safeCap;
   /* A starved frame knows nothing about the true count, and overshooting is
    * free as long as the orbits do escape (a reference stops the moment it
    * escapes), so jump straight to the ceiling instead of climbing: the two
    * wasted frames between 600 and 58 000 at 1.54e73 were pure latency. */
   const next = starved
-      ? ITER.starvedCap
+      ? starvedCap
       : Math.min(Math.min(ceiling, Math.max(cap * grow, 4000)), Math.max(cap + 1, budget));
-  if (starved && cap >= ITER.starvedCap) return;    // already at the deep ceiling
+  if (starved && cap >= starvedCap) return;         // already at this depth's ceiling
   if (next <= observedIter.cap) return;
   observedIter.cap = next;
   observedIter.refine++;
@@ -1379,9 +1385,16 @@ function stopsPayload() {
   const src = list.length > 32
     ? Array.from({ length: 32 }, (_, i) => list[Math.round(i * (list.length - 1) / 31)])
     : list;
+  const T = state.tone;
+  const grade = gradeActive(T) ? (c) => gradeRgb(c, T) : null;
+  const gR = +T.gr || 1, gG = +T.gg || 1, gB = +T.gb || 1;
   const out = [];
   for (const s of src) {
-    out.push(+s.pos.toFixed(5), +s.r.toFixed(5), +s.g.toFixed(5), +s.b.toFixed(5));
+    const c = grade ? grade([s.r, s.g, s.b]) : [s.r, s.g, s.b];
+    out.push(+s.pos.toFixed(5),
+      +clamp(c[0] * gR, 0, 1).toFixed(5),
+      +clamp(c[1] * gG, 0, 1).toFixed(5),
+      +clamp(c[2] * gB, 0, 1).toFixed(5));
   }
   return out;
 }
@@ -1407,7 +1420,7 @@ function fmtCycle(c) {
  * of a scheme: the JSON also carries its UniformsColor table, the neutral
  * values of the `params.param[]` sliders, the two region brightnesses and a
  * samples count.  All of them have to travel together or the same codegl
- * paints a different picture here than it did in the reference engine. */
+ * paints a different picture here than it did in the original program. */
 /** Move the view to the coordinates an official scheme was authored at. */
 function applySchemeView(v) {
   if (!v || v.re == null || v.im == null) return false;
@@ -1613,7 +1626,7 @@ function installScheme(id) {
   state.schemeParams = s.params.slice();
   /* The scheme library stores the file's literal (log-domain) tuples.
    * loadParams converts them with exp(f_i + F) / init_i + I before pal()
-   * ever sees them (design-note.c:79/:87); do it once here. */
+   * ever sees them (00546630.c:79/:87); do it once here. */
   state.schemeColors = shaderTerms(s.colors.map(c => ({
     r: c[0], g: c[1], b: c[2], frequency: c[3], initial: c[4]
   })), s.gf, s.gi);
@@ -1698,6 +1711,8 @@ function syncColorUi() {
   syncTrapUi();
   const toneRows = [
     ['rng-bri', 'val-bri', 'bri'],
+    ['rng-con', 'val-con', 'con'], ['rng-gam', 'val-gam', 'gam'],
+    ['rng-sat', 'val-sat', 'sat'],
     ['rng-gr', 'val-gr', 'gr'], ['rng-gg', 'val-gg', 'gg'], ['rng-gb', 'val-gb', 'gb']
   ];
   for (const [id, vid, key] of toneRows) {
@@ -2014,9 +2029,9 @@ function scaleSpan(sp, k) {
   return { m, e };
 }
 
-/* Depth -> the largest escape count actually observed near it.  The reference
+/* Depth -> the largest escape count actually observed near it.  The recovered
  * program has no maxiter = f(zoom); `canvas->maxiter` is what pixels really
- * did (design-note.c).  The depth formula below is only a first guess, and at
+ * did (0046f630.c).  The depth formula below is only a first guess, and at
  * 2^-66 it guesses 38 089 where the frame really escapes at 11 441 — three
  * times the work for the same picture.  Remembering the observation turns the
  * next visit to that depth into a correctly-sized frame. */
@@ -2075,7 +2090,7 @@ function autoIterNow() {
  */
 function effectiveIterTotal() {
   const auto = autoIterNow();
-  /* The observed ceiling from completed frames (design-note.c) takes over from
+  /* The observed ceiling from completed frames (0046f630.c) takes over from
    * the depth-derived first guess once real pixels have proved the budget too
    * tight.  It never lowers a manual count. */
   const obs = observedIterCap();
@@ -2088,8 +2103,8 @@ function effectiveIterTotal() {
 function effectiveCycle() {
   if (!state.cycleAuto) return Math.max(2, state.cycle);
   const it = effectiveIterTotal();
-  /* Ten colour cycles across the frame, which is what the reference engine
-   * does (`the renderer's effective_palette_scale()`).
+  /* Ten colour cycles across the frame, which is what the recovered program
+   * does (`out/src/render.cpp effective_palette_scale()`).
    *
    * This函数 used to return `6 * log2(it)` -- "60-120 bands at every zoom
    * level" -- on the theory that more bands show more structure.  They do not:
@@ -2152,7 +2167,24 @@ function currentLut() {
   const stops = customPaletteStops(state.palette) ||
     (Array.isArray(state.stops) ? resampleStops(state.stops, 64) : null);
   if (stops) registerCustomPalette(state.palette, stops);
-  return paletteLUT(state.palette);
+  const base = paletteLUT(state.palette);
+  const T = state.tone;
+  if (!gradeActive(T)) return base;
+  const gR = +T.gr || 1, gG = +T.gg || 1, gB = +T.gb || 1;
+  const key = [state.palette, T.con, T.gam, T.sat, T.hue, gR, gG, gB].join('|');
+  if (key === lutGradeKey && lutGradeCache && lutGradeCache.length === base.length)
+    return lutGradeCache;
+  const out = new Uint8Array(base.length);
+  for (let i = 0; i < base.length; i += 4) {
+    const q = gradeRgb([base[i] / 255, base[i + 1] / 255, base[i + 2] / 255], T);
+    out[i] = Math.round(clamp(q[0] * gR, 0, 1) * 255);
+    out[i + 1] = Math.round(clamp(q[1] * gG, 0, 1) * 255);
+    out[i + 2] = Math.round(clamp(q[2] * gB, 0, 1) * 255);
+    out[i + 3] = 255;
+  }
+  lutGradeKey = key;
+  lutGradeCache = out;
+  return out;
 }
 
 /** Re-shade the cached field with the current palette.  False = render. */
@@ -2248,7 +2280,7 @@ function paintFrame(f, scale) {
  * rather than pixels.  Everything after that is one draw call.
  *
  * Why this is worth a second pipeline: the field does not depend on the
- * colours, so a scheme change re-runs only the shader — the reference engine
+ * colours, so a scheme change re-runs only the shader — the reference program
  * behaves the same way, which is why its palette sliders are instant no matter
  * how deep the view is.  It is also the only route to the presets whose whole
  * look is a fragment shader.
@@ -2257,8 +2289,8 @@ function paintFrame(f, scale) {
  * ----------------------------------------------------------------*/
 /* ---------------- Field memory ----------------
  * The reference keeps its computed AREA / PREPIXELS around and only
- * recomputes what a new view actually invalidates (design-note.c:152,
- * design-note.c:88-107).  Here the equivalent is the iteration field itself:
+ * recomputes what a new view actually invalidates (00427ab0.c:152,
+ * 00498570.c:88-107).  Here the equivalent is the iteration field itself:
  * it is a property of the *view*, never of the colours.  Remembering the last
  * few finished fields means a palette edit, a tone change, a zoom back out or
  * a return to a preset costs one shader draw instead of another full
@@ -2486,7 +2518,7 @@ function gpuPass(vId, plan, done, planList) {
       julia: state.spec.mode === 'j',
       inverse: !!state.inverse,
       /* The reference's own clock.  A scheme that reads it animates; one that
-       * does not sees a constant, exactly as in the reference engine. */
+       * does not sees a constant, exactly as in the original program. */
       time: schemeTime()
     };
     const d0 = performance.now();
@@ -2522,6 +2554,9 @@ function gpuPass(vId, plan, done, planList) {
     } catch (e) {
       nativeLog('[gl] diag failed: ' + (e && e.message));
     }
+    /* A frame is on screen: the curtain has done its job.  Waiting for a
+     * "final" pass kept it up for seconds after the picture was readable. */
+    if (!splash.finished) splash.set(0.82, 'bootFirst'), splash.finish();
     tileTotal = 1;
     tileDone = 1;
     currentPass = idx;
@@ -2810,8 +2845,11 @@ function runPass(vId, plan, done, planList) {
               nativeLog(`[pass] view=${vId} idx=${idx} scale=${s} ss=${ss} ` +
                         `ms=${(performance.now() - passT0).toFixed(1)}`);
             if (!splash.finished) {
-              if (idx === 0) splash.set(0.68, 'bootFirst');
-              else if (idx === 1) splash.finish();
+              if (idx === 0) splash.set(0.78, 'bootFirst');
+              /* A first pass is a picture.  Waiting for the second one (the
+               * full-resolution pass) kept the curtain up for seconds after
+               * the canvas was already readable, which is the "slow start". */
+              splash.finish();
             }
             done();
           };
@@ -2876,7 +2914,7 @@ function renderPlan(plan, onDone) {
  * Live passes.
  *
  * A gesture transforms the committed frame and nothing else: the real pass is
- * issued once, 360 ms after the wheel stops (wheelnav).  This block is the
+ * issued once, 360 ms after the wheel stops (07f0583c).  This block is the
  * alternative the desktop carried for a while — ONE cheap pass at a time on
  * the current view, never overlapping another — and it is kept, unused by the
  * wheel, for the cases that need a sharp frame mid-gesture.  The pass is
@@ -2903,7 +2941,7 @@ function livePlan() {
 
 /** Render one live pass, unless the previous one is still running.
  *
- * Nothing calls this after the wheel moved to the wheelnav model; it is here
+ * Nothing calls this after the wheel moved to the 07f0583c model; it is here
  * for a caller that wants a sharp frame mid-gesture.  There is deliberately no
  * queue: a pass that arrives while another is in flight is dropped, because
  * queueing them is exactly what made the page-side pass latency climb
@@ -2987,7 +3025,7 @@ function scheduleZoomRender(immediate) {
     renderNow();
     return;
   }
-  /* wheelnav: one quiet timer, 360 ms.  No pass while the wheel is still
+  /* 07f0583c: one quiet timer, 360 ms.  No pass while the wheel is still
    * moving — a coarse pass under a stretched snapshot is the flicker. */
   clearTimeout(wheelTimer);
   wheelTimer = setTimeout(() => { wheelTimer = 0; renderNow(); }, 360);
@@ -3140,7 +3178,7 @@ function screenToPlaneHi(clientX, clientY) {
 
 /** Absolute plane coordinate under a client-space point.
  *  The reference's Julia preview re-seeds from the point under the mouse
- *  (design-note.c:126-137); this is that point, using the same rotated
+ *  (00405590.c:126-137); this is that point, using the same rotated
  *  screen-to-plane matrix every gesture already goes through.
  *
  *  Kept as the double-valued form for the preview shader, which works at a
@@ -3452,7 +3490,7 @@ function commitPan(base, dx, dy) {
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  /* The wheelnav web handler: one notch is one exact zoom step about the
+  /* The 07f0583c web handler: one notch is one exact zoom step about the
    * pointer.  No velocity, no coasting, no per-tick re-application. */
   const { x, y } = pointerPos(e);
   const factor = Math.exp(clamp(e.deltaY, -240, 240) * 0.0035);
@@ -3489,9 +3527,9 @@ canvas.addEventListener('dblclick', (e) => {
  * starting state on every pointer event and then let the shader redraw — the
  * old code only transformed a snapshot, which is why the picture did not
  * follow the fingers on the GPU path. */
-/** Zoom about a screen point with the reference viewport rule.
+/** Zoom about a screen point with the recovered viewport rule.
  *
- * the viewport model
+ * C:/Users/harve/Desktop/mande/out/src/app/app_state.cpp
  * AppState::zoom_at_pixel(x, y, factor):
  *      before = vp.point_at(x, y);
  *      vp.zoom_by(factor);
@@ -3519,7 +3557,7 @@ function applyZoomAt(px, py, factor) {
   normalizeSpan();
   /* centre += before - after, evaluated as ONE product.
    *
-   * The reference engine does two point_at() calls and subtracts them in
+   * The recovered program does two point_at() calls and subtracts them in
    * its own arbitrary-precision type.  Both forms were measured to be exact
    * in the page's fixed point (200 steps ×0.98 at 2^-3000 drift 0.0 px), so
    * this is not where a deck drifts; the single product is simply fewer
@@ -3579,9 +3617,9 @@ function normalizeSpan() {
 }
 
 /* ---------------- Wheel navigation ----------------
- * wheelnav's model, and nothing else: a notch is one exact zoom step about the
+ * 07f0583c's model, and nothing else: a notch is one exact zoom step about the
  * pointer (applyZoomAt), the committed frame is transformed for feedback, and
- * the real pass is debounced by 360 ms.  The reference nav_timer velocity
+ * the real pass is debounced by 360 ms.  The recovered nav_timer velocity
  * integrator that used to live here re-applied the step on every display
  * frame; each re-application measured its anchor against the previous scale,
  * so a burst accumulated a drift (measured: 0.78 px per notch, 52 px over
@@ -3803,7 +3841,7 @@ function syncIterUi() {
   $('in-iter').value = it;
 }
 
-/* Rotation travels in radians (the reference engine's unit, and what the
+/* Rotation travels in radians (the reference program's unit, and what the
  * kernel's screenDelta() consumes); the console speaks degrees.  One place
  * owns the conversion so a preset, an animation keyframe and the slider all
  * leave the two controls showing the same number as the picture. */
@@ -3826,7 +3864,7 @@ function fillSelects() {
   /* Two genuinely different drawing logics, so keep them apart in the list:
    * a cyclic ramp changes colour at one fixed rate everywhere, while an
    * additive scheme sums several frequencies — a slow one lays down the large
-   * soft fields, fast ones resolve the filigree.  The reference engine's
+   * soft fields, fast ones resolve the filigree.  The reference program's
    * memorable deep views all come from the second family. */
   const opt = p => `<option value="${p.id}">${getLang() === 'en' ? p.en : p.zh}</option>`;
   const ramp = PALETTE_LIST.filter(p => !paletteColors(p.id));
@@ -3851,6 +3889,71 @@ function fillSelects() {
   $('sel-palette').value = state.schemeId || state.palette;
 }
 
+/* ---------------- Tone stage ----------------
+ * The console grades the picture, not the geometry: every colour the renderer
+ * can possibly emit is produced from a ramp stop or from a scheme's
+ * UniformsColor table, so transforming those tables is a complete tone
+ * stage — the field, the LUT, the native shell and the GLSL path all inherit
+ * it without a second implementation.
+ *
+ * Order follows the panel top to bottom: hue -> brightness -> contrast ->
+ * gamma -> saturation -> per-channel gain.  Contrast pivots around mid grey,
+ * gamma is a plain power curve, saturation mixes toward Rec.709 luma and the
+ * hue rotation is the luminance-preserving matrix browsers use for
+ * `feColorMatrix type="hueRotate"`.
+ * -------------------------------------------------*/
+const TONE_NEUTRAL = { bri: 1, con: 1, gam: 1, sat: 1, gr: 1, gg: 1, gb: 1 };
+
+/** Does the tone stage change anything at all?  Brightness and the channel
+ *  gains are deliberately excluded: they have their own path (the palette's
+ *  brightness pair and the table multipliers), so grading must not repeat
+ *  them. */
+function gradeActive(T) {
+  if (!T) return false;
+  const near = (v) => Math.abs((v == null ? 1 : +v) - 1) <= 1e-6;
+  return Math.abs(+(T.hue || 0)) > 1e-6 ||
+         !near(T.con) || !near(T.gam) || !near(T.sat);
+}
+
+function gradeRgb(rgb, T) {
+  let r = clamp(+rgb[0] || 0, 0, 1);
+  let g = clamp(+rgb[1] || 0, 0, 1);
+  let b = clamp(+rgb[2] || 0, 0, 1);
+  const hue = +(T.hue || 0);
+  if (hue) {
+    const a = hue * Math.PI * 2;
+    const c = Math.cos(a), s = Math.sin(a);
+    const nr = r * (0.213 + c * 0.787 - s * 0.213) +
+               g * (0.715 - c * 0.715 - s * 0.715) +
+               b * (0.072 - c * 0.072 + s * 0.928);
+    const ng = r * (0.213 - c * 0.213 + s * 0.143) +
+               g * (0.715 + c * 0.285 + s * 0.140) +
+               b * (0.072 - c * 0.072 - s * 0.283);
+    const nb = r * (0.213 - c * 0.213 - s * 0.787) +
+               g * (0.715 - c * 0.715 + s * 0.715) +
+               b * (0.072 + c * 0.928 + s * 0.072);
+    r = nr; g = ng; b = nb;
+  }
+  const con = T.con == null ? 1 : +T.con;
+  if (con !== 1) {
+    r = (r - 0.5) * con + 0.5; g = (g - 0.5) * con + 0.5; b = (b - 0.5) * con + 0.5;
+  }
+  const gam = T.gam == null ? 1 : +T.gam;
+  if (gam !== 1) {
+    r = Math.pow(Math.max(0, r), gam);
+    g = Math.pow(Math.max(0, g), gam);
+    b = Math.pow(Math.max(0, b), gam);
+  }
+  const sat = T.sat == null ? 1 : +T.sat;
+  if (sat !== 1) {
+    const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    r = luma + (r - luma) * sat;
+    g = luma + (g - luma) * sat;
+    b = luma + (b - luma) * sat;
+  }
+  return [clamp(r, 0, 1), clamp(g, 0, 1), clamp(b, 0, 1)];
+}
+
 /* ---------------- Gradient editor ----------------
  * A ramp widget, Photoshop's colour-stop bar reduced to what a palette needs:
  * click the bar to add a handle, drag a handle to move it, double-click to
@@ -3860,30 +3963,87 @@ function fillSelects() {
  * registry to keep in sync.
  * -------------------------------------------------*/
 let gradSel = 0;
-/* The ramp is three stacked bars, each one third of the palette drawn at full
- * width.  Zone 1 = [0,1/3), zone 2 = [1/3,2/3), zone 3 = [2/3,1]. */
-const ZONE_SPAN = 1 / 3;
-function laneRange(z) {
-  const a = (z - 1) * ZONE_SPAN;
-  return [a, a + ZONE_SPAN];
+/* The ramp is drawn as a stack of full-width bars, each showing one equal
+ * slice of the palette.  Three bars is the reference console's minimum, and a
+ * bar that fills up with 15 handles grows another one below it — a 60-stop
+ * ramp otherwise becomes a row of handles too dense to grab.  The colour-set
+ * editor uses the same machinery with a wider ruler (25 per row).
+ */
+const LANE_MIN = 3;
+const LANE_CAP = 15;
+const PAL_LANE_CAP = 25;
+const LANE_MAX = 12;
+/* True while a handle is being dragged: rebuilding the lane stack mid-drag
+ * would detach the element holding the pointer capture. */
+let gradDragging = false;
+
+/** How many bars this ramp needs: at least `min`, and enough that no single
+ *  slice carries more than `cap` handles.  Bucket by position, grow by one,
+ *  repeat — a stop sitting on a boundary belongs to the bar on its right,
+ *  which is the half-open convention the handles use too. */
+function laneCountFor(list, cap, min = LANE_MIN) {
+  let lanes = Math.max(min, Math.ceil((list.length || 0) / cap));
+  /* Capacity first, then one safety step: a bar that has grown visibly full
+   * of handles (a third more than its share) still splits, so a ramp whose
+   * stops were dragged into one corner does not turn into a picket fence.
+   * The ceiling stops a pathological pile-up (dozens of handles at exactly
+   * 1.0) from stacking up a dozen empty bars. */
+  for (let guard = 0; guard < 4 && lanes < LANE_MAX; ++guard) {
+    const buckets = new Array(lanes).fill(0);
+    let worst = 0;
+    for (const st of list) {
+      let k = Math.floor(clamp(st.pos, 0, 1) * lanes);
+      if (k >= lanes) k = lanes - 1;
+      if (k < 0) k = 0;
+      if (++buckets[k] > worst) worst = buckets[k];
+    }
+    if (worst <= Math.ceil(cap * 1.2)) break;
+    ++lanes;
+  }
+  return Math.min(LANE_MAX, lanes);
+}
+
+/** Bars carry their own row count, so the console's 3-row ruler and the
+ *  palette editor's 1-row ruler can live in the same document. */
+function laneSpanOf(el) {
+  const n = +(el && el.dataset.span);
+  return n >= 1 ? n : LANE_MIN;
+}
+
+function laneRange(z, span = LANE_MIN) {
+  const w = 1 / Math.max(1, span);
+  const a = (z - 1) * w;
+  return [a, a + w];
+}
+
+function laneTag(z, span, count) {
+  const base = span <= 1 ? t('zoneAll')
+    : span === 3 ? (z === 1 ? t('zoneLeft') : z === 2 ? t('zoneMid') : t('zoneRight'))
+    : `${z}/${span}`;
+  /* "how full is this bar" is the number that makes the growth rule legible:
+   * a bar tightens up until it holds 15 handles, then another one appears
+   * below it. */
+  return count == null ? base : `${base} · ${count}`;
 }
 function laneBars() {
   /* Both the console's gradient editor and the presets panel draw the same
    * ramp, so this deliberately matches every bar in the document: whichever
-   * surface is open repaints, and so does the other one when it comes back. */
-  return Array.from(document.querySelectorAll('.grad-bar'));
+   * surface is open repaints, and so does the other one when it comes back.
+   * Bars marked `data-draft` belong to the colour-set editor, which edits its
+   * own copy of the ramp and paints itself. */
+  return Array.from(document.querySelectorAll('.grad-bar:not([data-draft])'));
 }
 /* Pointer x -> ramp position.  `free` lets a drag continue past the lane's
  * edges into a neighbouring third; a click always stays inside its own lane. */
-function barToT(clientX, rect, zone, free = false) {
+function barToT(clientX, rect, zone, span, free = false) {
   let f = (clientX - rect.left) / Math.max(1, rect.width);
   if (!free) f = clamp(f, 0, 1);
-  const [a, b] = laneRange(zone);
+  const [a, b] = laneRange(zone, span);
   return clamp(a + f * (b - a), 0, 1);
 }
 /* Ramp position -> offset within one lane, in percent. */
-function tToPct(t, zone) {
-  const [a, b] = laneRange(zone);
+function tToPct(t, zone, span) {
+  const [a, b] = laneRange(zone, span);
   return clamp((t - a) / Math.max(1e-9, b - a), 0, 1) * 100;
 }
 
@@ -3909,29 +4069,41 @@ function syncPaletteStrip() {
   const list = effectiveStops();
   if (gradSel > list.length - 1) gradSel = list.length - 1;
   const css = stopListGradientCSS(list);
+  ensureLanes($('grad-stack'), list, LANE_CAP, LANE_MIN);
   for (const bar of laneBars()) {
+    const span = laneSpanOf(bar);
     const zone = +bar.dataset.zone;
-    const [a, b] = laneRange(zone);
+    const [a, b] = laneRange(zone, span);
     const fill = bar.querySelector('.grad-fill');
-    /* Only the image changes; background-size (300%) and the pan position are
-     * fixed in CSS, so each lane automatically shows its own third. */
-    if (fill) fill.style.backgroundImage = css;
+    /* Only the image changes; the size and the pan position place this bar's
+     * own slice of the full ramp, so a 4th bar automatically shows a quarter
+     * instead of a third. */
+    if (fill) {
+      fill.style.backgroundImage = css;
+      fill.style.backgroundSize = (span * 100) + '% 100%';
+      fill.style.backgroundPosition =
+        (span <= 1 ? 0 : ((zone - 1) / (span - 1)) * 100) + '% 0';
+    }
     const box = bar.querySelector('.grad-handles');
     if (!box) continue;
     box.innerHTML = '';
+    let inThisLane = 0;
     list.forEach((s, i) => {
-      /* Half-open thirds: a stop on a boundary belongs to the lane on its
+      /* Half-open slices: a stop on a boundary belongs to the lane on its
        * right, so no handle is drawn twice.  The last lane owns t = 1. */
       const inside = s.pos >= a - 1e-9 &&
-                     (s.pos < b - 1e-9 || (zone === 3 && s.pos <= 1 + 1e-9));
+                     (s.pos < b - 1e-9 || (zone === span && s.pos <= 1 + 1e-9));
       if (!inside) return;
+      ++inThisLane;
       const h = document.createElement('div');
       h.className = 'grad-handle' + (i === gradSel ? ' sel' : '');
-      h.style.left = tToPct(s.pos, zone) + '%';
+      h.style.left = tToPct(s.pos, zone, span) + '%';
       h.style.background = `rgb(${Math.round(s.r * 255)},${Math.round(s.g * 255)},${Math.round(s.b * 255)})`;
       h.dataset.i = String(i);
       box.appendChild(h);
     });
+    const tagEl = bar.querySelector('.grad-lane-tag');
+    if (tagEl) tagEl.textContent = laneTag(zone, span, inThisLane);
   }
   const sel = list[clamp(gradSel, 0, list.length - 1)];
   if (sel) {
@@ -3952,10 +4124,11 @@ function bindGradientEditor() {
   stack.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     const bar = e.target.closest('.grad-bar');
-    if (!bar) return;
+    if (!bar || bar.hasAttribute('data-draft')) return;
     const zone = +bar.dataset.zone;
+    const span = laneSpanOf(bar);
     const rect = bar.getBoundingClientRect();
-    const t = barToT(e.clientX, rect, zone);
+    const t = barToT(e.clientX, rect, zone, span);
     const handle = e.target.closest('.grad-handle');
 
     if (!handle) {                       // empty stretch of bar: insert there
@@ -3974,19 +4147,24 @@ function bindGradientEditor() {
     /* Capture on the bar, not the handle: syncPaletteStrip() has just replaced
      * the handle DOM, so the pointer must belong to something that survives. */
     bar.setPointerCapture(e.pointerId);
+    gradDragging = true;
 
     const move = (ev) => {
       const list = editorStops();
       const lo = idx > 0 ? list[idx - 1].pos + 0.002 : 0;
       const hi = idx < list.length - 1 ? list[idx + 1].pos - 0.002 : 1;
-      const tt = clamp(barToT(ev.clientX, rect, zone, true), lo, hi);
+      const tt = clamp(barToT(ev.clientX, rect, zone, span, true), lo, hi);
       list[idx].pos = tt;
       commitStops(list, false);
     };
     const up = () => {
+      gradDragging = false;
       bar.removeEventListener('pointermove', move);
       bar.removeEventListener('pointerup', up);
       bar.removeEventListener('pointercancel', up);
+      /* A finished drag re-balances the stack: a handle pushed across a
+       * boundary can leave a bar over its cap. */
+      syncPaletteStrip();
     };
     bar.addEventListener('pointermove', move);
     bar.addEventListener('pointerup', up);
@@ -4019,9 +4197,16 @@ function bindGradientEditor() {
   };
 
   $('grad-add').onclick = () => {
+    /* Insert in the middle of the widest gap, not next to the selection.  A
+     * repeated "+" used to walk the new stop rightwards until it stuck at 1.0,
+     * which piled dozens of handles onto the last bar. */
     const list = editorStops();
-    const sel = list[gradSel] || list[0];
-    const pos = sel ? Math.min(1, sel.pos + 0.1) : 0.5;
+    let best = 1, gap = -1;
+    for (let i = 1; i < list.length; ++i) {
+      const d = list[i].pos - list[i - 1].pos;
+      if (d > gap) { gap = d; best = i; }
+    }
+    const pos = list.length > 1 ? list[best - 1].pos + gap / 2 : 0.5;
     const c = sampleStopList(list, pos);
     list.push({ pos, r: c[0], g: c[1], b: c[2] });
     list.sort((a, b) => a.pos - b.pos);
@@ -4098,9 +4283,9 @@ function openPaletteEditor() {
 
   const body = `
     <div class="pal-edit">
-      <div class="pal-preview" id="pal-preview">
-        <div class="grad-handles" id="pal-handles"></div>
-      </div>
+      <!-- The ruler grows with the ramp: 25 handles per row, one row minimum,
+           a new row below as soon as a row fills up. -->
+      <div class="grad-stack pal-stack" id="pal-lanes"></div>
       <div class="row"><label>${t('paletteName')}</label><input class="ctl" id="pal-name"/></div>
       <div class="pal-stops" id="pal-stops"></div>
       <div class="btnrow">
@@ -4134,45 +4319,93 @@ function openPaletteEditor() {
     return [0, 1, 2].map(c => hs[i][c] + (hs[j][c] - hs[i][c]) * f);
   }
 
-  function paintHandles() {
-    const box = $('pal-handles');
-    if (!box) return;
-    box.innerHTML = draft.stops.map((h, i) =>
-      `<div class="grad-handle" data-i="${i}" style="left:${(draft.pos[i] * 100).toFixed(2)}%;background:${h}"></div>`)
-      .join('');
-    for (const el of box.querySelectorAll('.grad-handle')) {
-      el.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const bar = $('pal-preview');
-        const rect = bar.getBoundingClientRect();
-        const idx = +el.dataset.i;
-        el.setPointerCapture(e.pointerId);
-        el.classList.add('sel');
-        const move = (ev) => {
-          const lo = idx > 0 ? draft.pos[idx - 1] + 0.005 : 0;
-          const hi = idx < draft.pos.length - 1 ? draft.pos[idx + 1] - 0.005 : 1;
-          const t = clamp((ev.clientX - rect.left) / Math.max(1, rect.width), lo, hi);
-          draft.pos[idx] = t;
-          el.style.left = (t * 100).toFixed(2) + '%';
-          $('pal-preview').style.background = gradientOf(draft.stops, draft.pos);
-        };
-        const up = () => {
-          el.removeEventListener('pointermove', move);
-          el.removeEventListener('pointerup', up);
-          el.removeEventListener('pointercancel', up);
-          el.classList.remove('sel');
-        };
-        el.addEventListener('pointermove', move);
-        el.addEventListener('pointerup', up);
-        el.addEventListener('pointercancel', up);
-      });
+  /* One ruler row per 25 handles.  The row count is derived from the draft's
+   * own positions, so the moment a row is full another one appears below it
+   * — the same rule the console's ramp uses with 15. */
+  function palSpan() {
+    return laneCountFor(draft.pos.map((v) => ({ pos: v })), PAL_LANE_CAP, 1);
+  }
+
+  function paintLanes(rebuild) {
+    const host = $('pal-lanes');
+    if (!host) return;
+    const span = palSpan();
+    if (rebuild || +host.dataset.span !== span) {
+      host.dataset.span = String(span);
+      let out = '';
+      for (let z = 1; z <= span; ++z) {
+        out += `<div class="grad-lane" data-zone="${z}">
+          <div class="grad-bar" data-zone="${z}" data-span="${span}" data-draft="1">
+            <div class="grad-fill"></div>
+            <span class="grad-lane-tag">${laneTag(z, span)}</span>
+            <div class="grad-handles"></div>
+          </div>
+        </div>`;
+      }
+      host.innerHTML = out;
+    }
+    const css = gradientOf(draft.stops, draft.pos);
+    const counts = new Array(span).fill(0);
+    for (const v of draft.pos) {
+      let k = Math.floor(clamp(v, 0, 1) * span);
+      if (k >= span) k = span - 1;
+      if (k < 0) k = 0;
+      ++counts[k];
+    }
+    for (const bar of host.querySelectorAll('.grad-bar')) {
+      const spanB = laneSpanOf(bar);
+      const zone = +bar.dataset.zone;
+      const tagEl = bar.querySelector('.grad-lane-tag');
+      if (tagEl) tagEl.textContent = laneTag(zone, spanB, counts[zone - 1] || 0);
+      const fill = bar.querySelector('.grad-fill');
+      if (fill) {
+        fill.style.backgroundImage = css;
+        fill.style.backgroundSize = (spanB * 100) + '% 100%';
+        fill.style.backgroundPosition =
+          (spanB <= 1 ? 0 : ((zone - 1) / (spanB - 1)) * 100) + '% 0';
+      }
+      const box = bar.querySelector('.grad-handles');
+      if (!box) continue;
+      box.innerHTML = draft.stops.map((h, i) => {
+        const [a, b] = laneRange(zone, spanB);
+        const inside = draft.pos[i] >= a - 1e-9 &&
+                       (draft.pos[i] < b - 1e-9 || (zone === spanB && draft.pos[i] <= 1 + 1e-9));
+        if (!inside) return '';
+        return `<div class="grad-handle" data-i="${i}" style="left:${tToPct(draft.pos[i], zone, spanB).toFixed(2)}%;background:${h}"></div>`;
+      }).join('');
+      for (const el of box.querySelectorAll('.grad-handle')) {
+        el.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const rect = bar.getBoundingClientRect();
+          const idx = +el.dataset.i;
+          el.setPointerCapture(e.pointerId);
+          el.classList.add('sel');
+          const move = (ev) => {
+            const lo = idx > 0 ? draft.pos[idx - 1] + 0.005 : 0;
+            const hi = idx < draft.pos.length - 1 ? draft.pos[idx + 1] - 0.005 : 1;
+            const t = clamp(barToT(ev.clientX, rect, zone, spanB, true), lo, hi);
+            draft.pos[idx] = t;
+            el.style.left = tToPct(t, zone, spanB).toFixed(2) + '%';
+            if (fill) fill.style.backgroundImage = gradientOf(draft.stops, draft.pos);
+          };
+          const up = () => {
+            el.removeEventListener('pointermove', move);
+            el.removeEventListener('pointerup', up);
+            el.removeEventListener('pointercancel', up);
+            el.classList.remove('sel');
+            paintLanes(true);          /* a move can fill a row: re-balance now */
+          };
+          el.addEventListener('pointermove', move);
+          el.addEventListener('pointerup', up);
+          el.addEventListener('pointercancel', up);
+        });
+      }
     }
   }
 
   function repaint() {
-    $('pal-preview').style.background = gradientOf(draft.stops, draft.pos);
-    paintHandles();
+    paintLanes(false);
   }
 
   function renderStops() {
@@ -4214,7 +4447,9 @@ function openPaletteEditor() {
       if (d > gap) { gap = d; best = i; }
     }
     const at = draft.pos[best - 1] + gap / 2;
-    draft.stops.splice(best, 0, draft.stops[best - 1] || '#ffffff');
+    /* Sample the ramp at the new position: copying the left neighbour's colour
+     * left two identical swatches next to each other in the stop list. */
+    draft.stops.splice(best, 0, rgb01ToHex(sampleDraft(at)));
     draft.pos.splice(best, 0, at);
     renderStops();
   };
@@ -4496,11 +4731,24 @@ let modalKind = null;
  * canvases (and their fields) alive.  Drop every queued job and observer when
  * the panel is replaced or closed; in-flight worker jobs finish into detached
  * canvases and are forgotten. */
+let thumbGen = 0;
 function clearThumbWork() {
+  ++thumbGen;                       // invalidate in-flight thumbnail results
   thumbQueue.length = 0;
   thumbJobs.length = 0;
   clearTimeout(thumbBackfill);
   if (thumbObserver) { thumbObserver.disconnect(); thumbObserver = null; }
+}
+
+function refreshThumbWork() {
+  ++thumbGen;
+  thumbQueue.length = 0;
+  thumbJobs.length = 0;
+  if (modalKind !== 'presets') return;
+  const cards = document.querySelectorAll('.thumb');
+  cards.forEach((c) => { if (c.dataset.q === '1') c.dataset.q = ''; });
+  clearTimeout(thumbBackfill);
+  thumbBackfill = setTimeout(observeThumbs, 0);
 }
 function openModal(kind, title, sub, bodyHtml, footHtml, cls = '') {
   if (modalKind === 'presets') clearThumbWork();
@@ -4547,15 +4795,27 @@ function rgbRowHtml() {
   return `<div class="pce-rgb">${rows}</div>`;
 }
 
-function gradLanesHtml(prefix) {
-  return [1, 2, 3].map(z => `
+function gradLanesHtml(span = LANE_MIN) {
+  let out = '';
+  for (let z = 1; z <= span; ++z) {
+    out += `
       <div class="grad-lane" data-zone="${z}">
-        <div class="grad-bar" data-zone="${z}" title="${t('gradHint')}">
+        <div class="grad-bar" data-zone="${z}" data-span="${span}" title="${t('gradHint')}">
           <div class="grad-fill"></div>
-          <span class="grad-lane-tag">${z === 1 ? t('zoneLeft') : z === 2 ? t('zoneMid') : t('zoneRight')}</span>
+          <span class="grad-lane-tag">${laneTag(z, span)}</span>
           <div class="grad-handles"></div>
         </div>
-      </div>`).join('');
+      </div>`;
+  }
+  return out;
+}
+
+function ensureLanes(host, list, cap, min) {
+  if (!host || gradDragging) return;
+  const want = laneCountFor(list, cap, min);
+  if (+host.dataset.span === want) return;
+  host.dataset.span = String(want);
+  host.innerHTML = gradLanesHtml(want);
 }
 
 function bindRgbSliders(root) {
@@ -4811,6 +5071,7 @@ function enqueueThumb(cv) {
   const FW = W, FH = H;
   if (cv.dataset.q) return;
   cv.dataset.q = '1';
+  const gen = thumbGen;
   const id = cv.dataset.id;
   const it = id ? LIB.items.find(x => x.f === id) : null;
   if (!it) return;
@@ -4830,7 +5091,13 @@ function enqueueThumb(cv) {
    * salt-and-pepper noise while the main canvas is a clean scroll fan (both
    * measured on Mandelbrot 15).  Same formula, same cap as the main view. */
   const zoomLog = Math.log10(Math.max(1, Number(it.zo) || 1));
-  const maxIter = Math.min(120000, autoIterFor(zoomLog));
+  /* A card is a hint.  The full 120k-iteration budget of a 1e74 preset takes
+   * minutes on 62k pixels and used to pin 3 workers for the whole session:
+   * every preset switch then queued behind it, which is the "gets slower and
+   * slower, never recovers" report.  Cap the card's own budget hard; the main
+   * view still uses the full one when the card is opened. */
+  const THUMB_MAX_ITER = 12000;
+  const maxIter = Math.min(THUMB_MAX_ITER, autoIterFor(zoomLog));
   const palette = thumbPalette(it);
   const cycle = 12;
   const offset = 0;
@@ -4872,6 +5139,7 @@ function enqueueThumb(cv) {
   if (art) {
     const im = new Image();
     im.onload = () => {
+      if (gen !== thumbGen || !cv.isConnected) return;
       if (cv.dataset.q === 'own') return;   // a real render already replaced it
       const g = cv.getContext('2d');
       g.imageSmoothingQuality = 'high';
@@ -4888,7 +5156,7 @@ function enqueueThumb(cv) {
    * card's 2D canvas.  A per-card context would hit the browser's context
    * limit (~16), which is why there is exactly one. */
   if (gpuOk && NATIVE && !gpu.gl.isContextLost()) {
-    thumbJobs.push({ cv, patch, payload, fieldW: FW, fieldH: FH });
+    thumbJobs.push({ cv, patch, payload, fieldW: FW, fieldH: FH, gen });
     pumpThumbs();
     return;
   }
@@ -4896,6 +5164,7 @@ function enqueueThumb(cv) {
   dispatch({
     payload, thumb: true,
     onDone: (msg) => {
+      if (gen !== thumbGen || !cv.isConnected) return;
       if (!msg || msg.viewId !== THUMB_VIEW_ID || !msg.data) return;
       const g = cv.getContext('2d');
       const img = new ImageData(new Uint8ClampedArray(msg.data), msg.w, msg.h);
@@ -4926,12 +5195,13 @@ function pumpThumbs() {
   if (thumbBusy) return;
   const job = thumbJobs.shift();
   if (!job) return;
-  const { cv, patch, payload, fieldW, fieldH } = job;
+  const { cv, patch, payload, fieldW, fieldH, gen } = job;
   const r = thumbRenderer();
   if (!r.ok) { cv.dataset.q = ''; return; }
   thumbBusy = true;
   const ok = nativeField(payload, (msg) => {
     try {
+      if (gen !== thumbGen || !cv.isConnected) return;
       if (!msg || !msg.data) return;
       const W = msg.w, H = msg.h;
       const rec = resolveScheme(patch);
@@ -4950,7 +5220,7 @@ function pumpThumbs() {
         juliaRe: patch.julia ? Number(patch.julia.re) : 0,
         juliaIm: patch.julia ? Number(patch.julia.im) : 0,
         inverse: !!patch.inverse,
-        tone: { bri: 1, gr: 1, gg: 1, gb: 1 }
+        tone: { ...TONE_NEUTRAL }
       });
       cv.getContext('2d').imageSmoothingQuality = 'high';
       cv.getContext('2d').drawImage(thumbGpuCv, 0, 0, cv.width, cv.height);
@@ -4965,7 +5235,7 @@ function pumpThumbs() {
 }
 
 /* ------------------------------------------------------------------
- * Reference presets (the reference engine's own JSON).
+ * Reference presets (the original program's own JSON).
  *
  * A file describes position, zoom, rotation, the Julia seed, the additive
  * `colors` table, the brightness pair — and, for the presets whose whole look
@@ -5188,7 +5458,7 @@ function applyRefPresetPatch(patch, file) {
    * last view put them tinted every preset opened afterwards — the file's
    * measured palette then looked "wrong" while the preset's own numbers were
    * fine.  Neutral here, and syncColorUi() pushes it into the controls. */
-  state.tone = { bri: 1, gr: 1, gg: 1, gb: 1 };
+  state.tone = { ...TONE_NEUTRAL };
   state.offset = 0;
   state.shade = 0;
   state.bands = 0;              // the file's own frequencies, never a fitted band count
@@ -5300,6 +5570,10 @@ function applyRefPresetPatch(patch, file) {
    * and a view that starts moving on its own is not what "open a file" means. */
   try { stopAnimation(); syncAnimationButton(); }
   catch (e) { console.error('[preset] anim', e); }
+  /* The view changed: every queued card job belongs to the OLD grid and the
+   * old view.  Dropping them here is what makes repeated preset switching
+   * bounded instead of accumulating one grid of work per click. */
+  refreshThumbWork();
   viewId++;
   renderNow();
   toast(patch.name || patch.schemeName || t('saved'));
@@ -5393,7 +5667,7 @@ window.addEventListener('mbPreset', (e) => {
 });
 
 /* ---- appdata\mandelbrot.json -------------------------------------------
- * The reference engine's parameter file (winparameters.html).  The shell
+ * The reference program's parameter file (winparameters.html).  The shell
  * parses it, clamps every key to the documented range/defaults, applies
  * `nthread` before the engine starts, and sends the effective values here.
  * Only the keys with a real counterpart in this port change anything; the rest
@@ -5513,7 +5787,7 @@ function exportPresetFile() {
 /* ------------------------------------------------------------------
  * Animation playback.
  *
- * Some presets carry a keyframe list (the reference engine's own files can
+ * Some presets carry a keyframe list (the reference program's own files can
  * describe a move as well as a view).  Playing one walks the view along those
  * keys and asks for a frame at a fixed cadence; the renderer's progressive
  * path already drops stale frames, so a slow frame simply means a lower frame
@@ -6504,6 +6778,8 @@ function bindUi() {
    * quiet period, so dragging shows the effect continuously. */
   const toneMap = [
     ['rng-bri', 'val-bri', 'bri'],
+    ['rng-con', 'val-con', 'con'], ['rng-gam', 'val-gam', 'gam'],
+    ['rng-sat', 'val-sat', 'sat'],
     ['rng-gr', 'val-gr', 'gr'], ['rng-gg', 'val-gg', 'gg'], ['rng-gb', 'val-gb', 'gb']
   ];
   for (const [id, vid, key] of toneMap) {
@@ -6518,7 +6794,7 @@ function bindUi() {
   const toneReset = $('btn-tone-reset');
   if (toneReset) {
     toneReset.onclick = () => {
-      state.tone = { bri: 1, gr: 1, gg: 1, gb: 1 };
+      state.tone = { ...TONE_NEUTRAL };
       for (const [id, vid, key] of toneMap) {
         if ($(id)) $(id).value = state.tone[key];
         if ($(vid)) $(vid).textContent = state.tone[key].toFixed(2);
@@ -6614,7 +6890,7 @@ function bindUi() {
     const k = e.key;
     /* --- keyboard navigation: arrows pan by 1/8 view, z/x (or PgUp/PgDn) zoom --- */
     const step = Math.max(8, Math.round(Math.min(canvas.width, canvas.height) / 8));
-    /* Preset files: the reference engine's own JSON.  Ctrl+O / Ctrl+S are the
+    /* Preset files: the reference program's own JSON.  Ctrl+O / Ctrl+S are the
      * pair every editor uses, and they have to be handled before the plain-key
      * block below swallows the modifier. */
     if ((e.ctrlKey || e.metaKey) && (k === 'o' || k === 'O')) {
@@ -6662,7 +6938,7 @@ function bindUi() {
     if (k === 'z' || k === 'Z' || k === 'PageUp') { e.preventDefault(); zoomAt(canvas.width / 2, canvas.height / 2, 0.5, true); return; }
     if (k === 'x' || k === 'X' || k === 'PageDown') { e.preventDefault(); zoomAt(canvas.width / 2, canvas.height / 2, 2, true); return; }
     if (k === 'Home' || k === '0') { e.preventDefault(); applyMode(state.spec.mode); return; }
-    /* --- the reference engine's numeric keypad (winapp.html) --------------
+    /* --- the reference program's numeric keypad (winapp.html) --------------
      * 2/4/6/8 pan, 1/3 zoom out/in, 7/9 rotate, 5 stop.  Numpad keys report the
      * same `e.key` as the top row, so both work.  Only "0" was already taken
      * (home view), so nothing above is overridden. */
@@ -6808,7 +7084,8 @@ function encodeState() {
     bd: state.bands, ca: state.cycleAuto,
     /* Only the four live tone keys travel.  An older link that still carries
      * con/gam/sat/hue is read as if those keys were absent (see decodeState). */
-    tn: { bri: state.tone.bri, gr: state.tone.gr,
+    tn: { bri: state.tone.bri, con: state.tone.con, gam: state.tone.gam,
+          sat: state.tone.sat, gr: state.tone.gr,
           gg: state.tone.gg, gb: state.tone.gb },
     st: state.stops,
     /* An official GLSL recipe: the library id is enough for embedded schemes
@@ -6838,6 +7115,9 @@ function decodeState() {
        * dropped here, so the state never grows fields no control owns. */
       tone: {
         bri: Number.isFinite(+(o.tn && o.tn.bri)) ? +o.tn.bri : 1,
+        con: Number.isFinite(+(o.tn && o.tn.con)) ? +o.tn.con : 1,
+        gam: Number.isFinite(+(o.tn && o.tn.gam)) ? +o.tn.gam : 1,
+        sat: Number.isFinite(+(o.tn && o.tn.sat)) ? +o.tn.sat : 1,
         gr: Number.isFinite(+(o.tn && o.tn.gr)) ? +o.tn.gr : 1,
         gg: Number.isFinite(+(o.tn && o.tn.gg)) ? +o.tn.gg : 1,
         gb: Number.isFinite(+(o.tn && o.tn.gb)) ? +o.tn.gb : 1
@@ -6921,24 +7201,38 @@ function resizeCanvas(render = true) {
   dpr = Math.max(1, dpr);
   const nextW = Math.max(320, Math.round(innerWidth * dpr));
   const nextH = Math.max(240, Math.round(innerHeight * dpr));
-  if ((canvas.width !== nextW || canvas.height !== nextH) &&
-      !nativeCanvasMode() && (pending > 0 || liveBusy)) {
-    cancelAll();
+  /* `applyDeepPixelCap()` calls this on EVERY renderNow() that crosses the
+   * depth threshold.  Assigning canvas.width (even to the same value) clears
+   * the whole surface, and the old code then painted it dark without restoring
+   * the snapshot: switching a deep preset produced a black canvas with one
+   * stale rectangle, and the in-flight pass was cancelled on top of it.  A
+   * no-op resize must be exactly that — no clear, no cancel, no lost frame. */
+  if (canvas.width !== nextW || canvas.height !== nextH) {
+    if (!nativeCanvasMode() && (pending > 0 || liveBusy)) cancelAll();
+    canvas.width = nextW;
+    canvas.height = nextH;
+    /* The shader's backing store is only sized inside sceneDraw(), so a view
+     * the shader declines leaves it at the *previous* window's dimensions.
+     * CSS then stretches that stale frame over the new viewport — a second
+     * source of misplaced blocks.  Keep both layers in lockstep; resizing a
+     * WebGL canvas clears its drawing buffer, so the 2D layer has to become
+     * visible. */
+    if (glCanvas.width !== nextW || glCanvas.height !== nextH) {
+      glCanvas.width = nextW;
+      glCanvas.height = nextH;
+      setGlSurface(false);
+    }
+    ctx.fillStyle = '#05060a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    /* Keep the previous picture on screen while the new pass is computed. */
+    if (snap.width > 0) {
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'medium';
+      ctx.drawImage(snap, 0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
   }
-  canvas.width = nextW;
-  canvas.height = nextH;
-  /* The shader's backing store is only sized inside sceneDraw(), so a view the
-   * shader declines leaves it at the *previous* window's dimensions.  CSS then
-   * stretches that stale frame over the new viewport — a second source of
-   * misplaced blocks.  Keep both layers in lockstep; resizing a WebGL canvas
-   * clears its drawing buffer, so the 2D layer has to become visible. */
-  if (glCanvas.width !== nextW || glCanvas.height !== nextH) {
-    glCanvas.width = nextW;
-    glCanvas.height = nextH;
-    setGlSurface(false);
-  }
-  ctx.fillStyle = '#05060a';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
   // One line in shell.log per resize: the only way to see the real viewport,
   // DPI and buffer size without a debugger attached to WebView2.
   try {
@@ -7019,12 +7313,12 @@ const splash = {
     if (this.fill) this.fill.style.width = '100%';
     if (this.pct) this.pct.textContent = '100%';
     if (this.status) this.status.textContent = t('bootReady');
-    const wait = Math.max(0, 820 - (performance.now() - this.startAt));
+    const wait = Math.max(0, 480 - (performance.now() - this.startAt));
     setTimeout(() => {
       const el = this.el;
       if (el) el.classList.add('hide');
       document.body.classList.remove('booting');
-      setTimeout(() => { if (el && el.parentNode) el.parentNode.removeChild(el); }, 700);
+      setTimeout(() => { if (el && el.parentNode) el.parentNode.removeChild(el); }, 420);
     }, wait);
   }
 };
@@ -7035,7 +7329,14 @@ function boot() {
   window.__mbModuleLoaded = true;
   if (window.__mbBootWatch) clearTimeout(window.__mbBootWatch);
 
+  const bootT0 = performance.now();
+  const bootMark = (k) => nativeLog('[boot] ' + k + ' ' + (performance.now() - bootT0).toFixed(0) + 'ms');
+  bootMark('start');
   splash.init();
+  /* The shell leaves the window hidden until this frame has been painted, so
+   * the first thing the user sees is the branded splash, never a black
+   * rectangle.  Two frames: one to lay out, one to have it on the compositor. */
+  requestAnimationFrame(() => requestAnimationFrame(() => nativeSplashPainted()));
   hydrateUserPalettes();
   /* The colour-scheme library is read before anything can install a scheme. */
   schemeStoreLoad();
@@ -7072,19 +7373,31 @@ function boot() {
   $('sel-palette').value = state.schemeId || state.palette;
   $('sel-scheme').value = state.scheme;
   syncColorUi();
+  bootMark('ui-built');
   $('chk-autoiter').checked = state.autoIter;
   $('sel-bits').value = state.bits;
   splash.set(0.16, 'bootKernel');
 
-  // Safety net: whatever happens, enter the main UI after 8 seconds
-  setTimeout(() => { if (!splash.finished) splash.finish(); }, 8000);
+  // Safety net: whatever happens, enter the main UI after 3.5 seconds.  The
+  // first pass usually lands at ~300 ms; a longer curtain only reads as a slow
+  // launch.
+  setTimeout(() => { if (!splash.finished) splash.finish(); }, 3500);
 
+  bootMark('pre-probe');
   probeRemote().then((ok) => {
     updateEngineLabel();
     splash.set(ok ? 0.44 : 0.4, 'bootCore');
     if (ok) updateHud();
   });
-  initWorkers();
+  /* The JS worker pool exists for the formulas and for a browser run; the
+   * desktop's first frame is produced by the C++ core.  Compiling that wasm
+   * module takes ~3 s, and doing it before the first paint kept the splash up
+   * long after the window had a picture.  Start it after the first frame. */
+  if (NATIVE && nativeUsable()) {
+    requestAnimationFrame(() => requestAnimationFrame(() => initWorkers()));
+  } else {
+    initWorkers();
+  }
   /* Resolution must be restored before the first canvas sizing, otherwise the
    * saved choice would only take effect on the next view change. */
   try {
@@ -7092,12 +7405,22 @@ function boot() {
     if (sc >= 1 && sc <= 2) state.renderScale = sc;
   } catch { /* private mode */ }
   if ($('sel-scale')) $('sel-scale').value = String(state.renderScale);
+  bootMark('pre-resize');
   resizeCanvas();
-  initMainGpu();
+  bootMark('post-resize');
+  /* The first native tile lands in ~15 ms; close the curtain shortly after so
+   * it never depends on which renderer won the race (the GPU block, the CPU
+   * settle path and the native tile callback each close it too, but a late
+   * wasm compile must not hold the splash). */
+  setTimeout(() => { if (!splash.finished) splash.finish(); }, 700);
 
-  /* The reference's second viewport (design-note.c) is brought up last so it can
-   * borrow the first pass's compiled scheme and Params. */
-  juliaView = initJuliaView({
+  /* The reference's second viewport (00406070.c) and the WebGPU device both
+   * compile shader programs.  Doing that inline blocked the page for ~2.8 s on
+   * the startup path (the splash sat at "compiling the pixel kernel" long after
+   * the canvas had a picture), so they are brought up after the first painted
+   * frame instead.  Every call site null-guards `juliaView`, so the dock simply
+   * appears a frame or two later. */
+  const createJuliaView = () => initJuliaView({
     mainCanvas: canvas,
     getScheme: () => lastDraw,
     /* The dock shades with its own fragment program, so all it needs from the
@@ -7116,6 +7439,22 @@ function boot() {
     onOpen: openJuliaSet,
     onBack: backFromJulia
   });
+  /* Both of these compile shader programs on the main thread (~2.8 s together
+   * on ANGLE).  They are secondary: the picture is already on screen through
+   * the native core.  Delaying them past the curtain is what turned a 4-5 s
+   * launch into "window with the branded splash, picture a beat later". */
+  setTimeout(() => {
+    bootMark('gpu-begin');
+    initMainGpu();
+    try {
+      juliaView = createJuliaView();
+      if (window.__mb) window.__mb.julia = juliaView;
+      if (juliaView) juliaView.redraw();
+    } catch (err) {
+      nativeLog('[boot] julia dock failed: ' + (err && err.message));
+    }
+    bootMark('gpu-done');
+  }, 1200);
   /* Dev probe: tools/cdp.mjs verifies the second viewport (seed round-trip,
    * picking, marker placement) through this instead of a debugger.  The render
    * and preset entry points are exported too, so an automated A/B against the
@@ -7136,7 +7475,7 @@ function boot() {
                   /* Measurement hook for the frame-time breakdown: one `[seg]`
                    * log line per shaded pass (see segReport). */
                   seg: (on) => { segOn = !!on; return segOn; },
-                  /* Observed-iteration state (design-note.c).  iterProbe feeds a
+                  /* Observed-iteration state (0046f630.c).  iterProbe feeds a
                    * synthetic completed frame so the budget rule can be
                    * checked without waiting for a real exhausted pass. */
                   iter: () => ({

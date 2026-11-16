@@ -37,6 +37,8 @@ let seqCounter = 0;
 const inflight = new Map();          // seq -> { onDone, id, viewId }
 let lutRef = null;                   // last uploaded LUT (identity, so edits re-upload)
 let readyThreads = 0;
+/* The host reports whether its core can parse a user expression (src/mathx). */
+let formulaNative = false;
 let readyWaiters = [];
 let statsHook = null;
 let frameCap = false;                 // host can write a whole pass into one buffer
@@ -126,10 +128,16 @@ export function nativeCanvasExport() {
 
 export function nativeLog(msg) { post({ type: 'log', msg: String(msg) }); }
 
+/** Tell the shell that the in-page boot splash has been painted.  The window is
+ *  kept hidden until this arrives (see host.cpp), so the user never sees the
+ *  black rectangle between "process started" and "page painted".  A browser
+ *  run has no bridge and this is a no-op. */
+export function nativeSplashPainted() { post({ type: 'splashPainted' }); }
+
 /* ---- preset files -------------------------------------------------------
  *
  * The library itself is embedded (presets-data.js); the only file operations
- * are importing or exporting ONE JSON preset in the reference engine's
+ * are importing or exporting ONE JSON preset in the reference program's
  * format.  A WebView2 page cannot open an arbitrary path, so the shell owns
  * the dialogs and ships the file *text* back and forth — the page never
  * re-serialises a 40-digit centre.
@@ -296,6 +304,7 @@ function kindCode(spec) {
     case 'celtic': return 3;
     case 'perpendicular': return 4;
     case 'phoenix': return 5;
+    case 'custom': return spec.customExpr ? 6 : -1;
     default: return -1;
   }
 }
@@ -308,7 +317,7 @@ function kindCode(spec) {
  * The colour set, in the form the core expects.
  *
  * Additive schemes travel as (r,g,b,frequency,initial) quintuples — literally
- * the reference engine's `params.color[]`, so the core runs the same pal()
+ * the reference program's `params.color[]`, so the core runs the same pal()
  * and gets the same picture.  Everything else travels as a gradient ramp.
  * Without this the job only carried `pal: 0`, i.e. every render and every
  * preset thumbnail came out in the same Ice ramp.
@@ -328,8 +337,36 @@ function palettePayload(id) {
   return { palStops: out };
 }
 
+/* The native formula parser (src/mathx/expr.cpp) is a subset of mathlib.js:
+ * single-letter parameters and the documented function list.  A quick token
+ * check keeps an expression it cannot parse on the JS path instead of sending
+ * it to a host that would answer with an empty frame. */
+const FN_NAMES = new Set(['sin','cos','tan','asin','acos','atan','sinh','cosh','tanh',
+  'exp','log','ln','log10','sqrt','abs','abs2','norm','arg','conj','re','real',
+  'im','imag','floor','ceil','round','sign','sgn','pow','min','max','atan2','if']);
+const CONST_NAMES = new Set(['z','c','n','z1','z_1','zp','i','pi','e']);
+export function formulaNativeReady(expr) {
+  if (!formulaNative) return false;
+  const src = String(expr || '').trim();
+  if (!src) return false;
+  const ids = src.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
+  for (const id of ids) {
+    if (CONST_NAMES.has(id) || FN_NAMES.has(id)) continue;
+    if (id.length === 1) continue;          // parameter
+    return false;
+  }
+  return true;
+}
+
 export function nativeCapable(spec, psLog2) {
   if (!usable) return false;
+  if (spec.mode === 'x') {
+    /* Custom formulas go native only when the JS evaluator is no longer
+     * practical: shallow frames stay on the proven path, deep ones (past
+     * 1e13) are exactly where the C++ core earns its keep. */
+    if (psLog2 > -45) return false;
+    return formulaNativeReady(spec.customExpr);
+  }
   if (spec.mode !== 'm' && spec.mode !== 'j') return false;
   const k = kindCode(spec);
   if (k < 0) return false;
@@ -342,8 +379,15 @@ export function nativeCapable(spec, psLog2) {
    * perpendicular) still need a double orbit below 1e-13 because their step
    * flips sign somewhere along the orbit, so they stay shallow-only; phoenix
    * has no native kernel at all. */
-  if (psLog2 <= -45 && (k !== 0 || (spec.power || 2) > 8)) return false;
   return true;
+}
+
+/** "a=0.5;b=1" for the formula sliders. */
+function paramString(spec) {
+  if (spec.mode !== 'x' || !spec.customParams) return '';
+  return Object.entries(spec.customParams)
+    .map(([k, v]) => k + '=' + Number(v))
+    .join(';');
 }
 
 /** Everything the shell needs to describe one render, tiles and fields alike. */
@@ -393,8 +437,13 @@ function buildMsg(payload, seq) {
     briFinite: pal.briFinite,
     briInfinite: pal.briInfinite,
     bri: tone.bri != null ? tone.bri : 1,
-    /* contrast / gamma / saturation are gone from the console (the reference
-     * has no such stage); the shell keeps its own neutral defaults. */
+    /* The shell owns the same tone stage as the page (core/mb_palette.cpp
+     * tonePrep: saturation -> contrast -> gamma -> gain), so the three middle
+     * sliders have to travel with every job -- without them the desktop's
+     * ramp-based kernels ignored contrast/gamma/saturation entirely. */
+    con: tone.con != null ? tone.con : 1,
+    gam: tone.gam != null ? tone.gam : 1,
+    sat: tone.sat != null ? tone.sat : 1,
     gainR: tone.gr != null ? tone.gr : 1,
     gainG: tone.gg != null ? tone.gg : 1,
     gainB: tone.gb != null ? tone.gb : 1,
@@ -407,6 +456,8 @@ function buildMsg(payload, seq) {
     dynamicIter: payload.dynamicIter === true,
     mode: spec.mode === 'j' ? 1 : 0,
     kind: kindCode(spec),
+    expr: spec.mode === 'x' ? String(spec.customExpr || '') : '',
+    params: paramString(spec),
     power: spec.power || 2,
     juliaRe: spec.julia ? String(spec.julia.re) : 0,
     juliaIm: spec.julia ? String(spec.julia.im) : 0,
@@ -432,7 +483,7 @@ export function nativeRender(payload, onDone) {
  *
  * The shell then skips its colour stage entirely and hands back
  * w*h*4 float32 (smoothiter, distance, iter, dist2).  The page uploads that as
- * a texture and shades it with `gpu.js`, which is the reference engine's own
+ * a texture and shades it with `gpu.js`, which is the reference program's own
  * split and the only way to run its per-preset GLSL schemes.
  *
  * A field pass is never a tile: the shader needs the frame's own pixel grid
@@ -556,6 +607,7 @@ if (NATIVE) {
     if (!m) return;
     if (m.type === 'ready') {
       readyThreads = m.threads || 1;
+      formulaNative = m.formula === true;
       if (m.shm === false) usable = false;
       frameCap = m.shm !== false && m.frame !== false;
       canvasMode = m.native === true;

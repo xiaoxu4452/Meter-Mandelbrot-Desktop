@@ -234,6 +234,19 @@ class Cb : public T {
 // ---------------------------------------------------------------- globals
 
 static HWND g_hwnd = nullptr;
+/* Deferred first show: the window is created (WebView2 needs its client size
+ * and DPI) but stays hidden until the page has painted the branded splash.
+ * See the `splashPainted` message and the 0x69 failsafe. */
+static bool g_windowShown = false;
+static bool g_startMaxed = false;
+
+static void ShowAppWindow(const char* why) {
+  if (g_windowShown || !g_hwnd) return;
+  g_windowShown = true;
+  ShowWindow(g_hwnd, g_startMaxed ? SW_SHOWMAXIMIZED : SW_SHOW);
+  UpdateWindow(g_hwnd);
+  LogMsg(std::string("[boot] window shown (") + why + ")");
+}
 static ICoreWebView2Environment* g_env = nullptr;
 static ICoreWebView2Controller* g_ctl = nullptr;
 static ICoreWebView2* g_wv = nullptr;
@@ -643,6 +656,10 @@ struct Job {
   int shade = 0;          // band-density policy: 0 legacy / 1 stretched / 2 multi-cycle / 3 dense
   bool dither = false;    // independent 8x8 ordered dither on the LUT path
   int mode = 0, kind = 0, power = 2;
+  /* User formula (kind 6): the expression the page's editor holds, plus its
+   * sliders as "a=0.5;b=1".  Parsed by the core's own mathx library. */
+  std::string expr;
+  std::string params;
   double juliaRe = 0.0, juliaIm = 0.0, phoenixP = 0.5667;
   std::string juliaReS, juliaImS;   // arbitrary-precision Julia c (may be empty)
   int pal = 0;            // index into mbc::builtinPalette()
@@ -650,7 +667,7 @@ struct Job {
    * it is present it replaces the built-in ramp entirely, which is what makes
    * the editor's changes actually reach the pixels. */
   std::vector<float> stops;
-  /* Additive palette from the reference engine's examples: a flat list of
+  /* Additive palette from the reference program's examples: a flat list of
    * (r, g, b, frequency, initial) quintuples.  The page sends this when the
    * selected scheme is one of the transcribed example palettes; `stops` is
    * then empty and vice versa. */
@@ -797,7 +814,7 @@ static std::string JsonStr(const std::string& s, const char* key, const std::str
 static bool ReadAllText(const std::wstring& path, std::string& out);
 static std::string JsonEscapeStr(const std::string& s);
 
-/* The reference engine keeps its knobs in `appdata\mandelbrot.json`
+/* The reference program keeps its knobs in `appdata\mandelbrot.json`
  * (winparameters.html): framerate / nthread / totalmemory / graphicsmemory /
  * graphicsrate / cachesize / canvas size / guiscale / linewidth / pointsize /
  * ntrace / GLFW major+minor / yreduce (+ videooptions).  We read the same file,
@@ -1167,7 +1184,7 @@ static bool ExportPngNative() {
 
 /* ---------------------------------------------------------------- presets
  *
- * The reference engine stores a whole view as one JSON file (see its
+ * The reference program stores a whole view as one JSON file (see its
  * examples/*.json).  Both directions go through the system file dialogs here
  * rather than through the page: a WebView2 page cannot read an arbitrary path,
  * and it has no download route that lands where the user pointed.  Doing it in
@@ -1514,6 +1531,7 @@ class MsgHandler : public Cb<ICoreWebView2WebMessageReceivedEventHandler> {
                       ",\"surface\":\"" + back + "\"" +
                       ",\"composite\":" + (g_compMode ? "true" : "false") +
                       ",\"glnative\":" + (g_glCanvas ? "true" : "false") +
+                      ",\"formula\":true" +
                       ",\"cfg\":" + ConfigJson() + "}";
       PostJson(r);
       /* The preset library ships inside the page bundle (presets-data.js).
@@ -1551,6 +1569,13 @@ class MsgHandler : public Cb<ICoreWebView2WebMessageReceivedEventHandler> {
     }
 
     const std::string ty = JsonStr(s, "type", "");
+    if (ty == "splashPainted") {
+      /* The page has the icon, the wordmark and the progress rail on screen:
+       * this is the first pixel the user is allowed to see. */
+      KillTimer(g_hwnd, 0x69);
+      ShowAppWindow("page splash");
+      return S_OK;
+    }
     if (ty == "cmd") {
       // Window-level commands the page cannot perform itself (WebView2 has no
       // Fullscreen API); see ToggleFullscreen.
@@ -1761,6 +1786,8 @@ class MsgHandler : public Cb<ICoreWebView2WebMessageReceivedEventHandler> {
       JsonStops(s, j.stops);
       j.mode = JsonInt(s, "mode", 0);
       j.kind = JsonInt(s, "kind", 0);
+      j.expr = JsonStr(s, "expr", "");
+      j.params = JsonStr(s, "params", "");
       j.power = JsonInt(s, "power", 2);
       // The page sends Julia's c as a decimal string so the deep orbit keeps
       // every digit the frame centre has.  The double is derived from it for
@@ -1988,7 +2015,7 @@ static void RenderThread() {
     req.quality = j.quality;
     /* The page can either render a pass at n times the resolution (and let the
      * canvas box-reduce it) or ask the core for supersampling here.  Both are
-     * supported: `aa` from the page is the reference engine's `samples`. */
+     * supported: `aa` from the page is the reference program's `samples`. */
     req.aa = j.aa > 0 ? j.aa : 1;
     req.detail = (j.detail < 0) ? 0 : (j.detail > 3 ? 3 : j.detail);
     req.traps = (j.traps < 0) ? 0 : (j.traps > 4 ? 4 : j.traps);
@@ -2008,7 +2035,7 @@ static void RenderThread() {
      * colour edit never needs a second code path. */
     mbc::Palette pal = mbc::builtinPalette(j.pal);
     if (!j.colors.empty() && (j.colors.size() % 5) == 0) {
-      /* Additive scheme: the same pal() the reference engine runs, with the
+      /* Additive scheme: the same pal() the reference program runs, with the
        * exact rgb/frequency/initial triples out of examples/*.json. */
       pal.mode = 0;
       pal.n = 0;
@@ -2056,7 +2083,7 @@ static void RenderThread() {
     bool gpuField = false;
     if (j.field) {
       /* The kernel computes the iteration field only; the page's shader turns
-       * it into pixels.  This is the reference engine's own split, and it is
+       * it into pixels.  This is the reference program's own split, and it is
        * what makes a colour change free: the field does not depend on it.
        *
        * Direct write: the kernel's `Field` adopts the reserved shared buffer,
@@ -2156,7 +2183,9 @@ static void RenderThread() {
                 j.juliaReS.empty() ? nullptr : j.juliaReS.c_str(),
                 j.juliaImS.empty() ? nullptr : j.juliaImS.c_str(),
                 j.colorMode, j.rotation, fch, reinterpret_cast<float*>(fs.ptr),
-                &g_stopRender, &mr);
+                &g_stopRender, &mr,
+                j.expr.empty() ? nullptr : j.expr.c_str(),
+                j.params.empty() ? nullptr : j.params.c_str());
             if (coreDrew) {
               st.bits = mr.digits;
               st.perturb = true;
@@ -2289,7 +2318,7 @@ static void RenderThread() {
                   st.bounded, st.escapeMin, st.escapeMax);
       }
       if (!onGpu) {
-        /* Backend swap: the pixels come from the C++ core
+        /* Backend swap: the pixels come from the reconstructed core
          * (native/mset) whenever it can describe the request.
          *
          * The page's gradient no longer forces a fallback: the core hands back
@@ -2313,7 +2342,7 @@ static void RenderThread() {
           grad.count = n;
           grad.stops = j.stops.data();
         }
-        /* The C++ core pays for a high-precision reference orbit and
+        /* The reconstructed core pays for a high-precision reference orbit and
          * its own full-core thread pool on every tile.  At shallow/medium depth
          * that is pure overhead: the stitched engine draws the identical frame
          * 3-5x faster here (108 ms vs 594 ms on the 2724x1416 home view).
@@ -2346,7 +2375,7 @@ static void RenderThread() {
          * `MB_FORCEMSET=1` still routes through it for A/B work. */
         /* 2026-11-14 B4: the rebuilt core is the renderer.
          *
-         * The paragraphs below describe why the *old* C++ core was
+         * The paragraphs below describe why the *old* reconstructed core was
          * demoted: its reference orbit escaped before the frame's pixels did,
          * so at 2^-340 the anchor died at iteration 110 against a true 279 and
          * the frame collapsed to one colour right where the user was zooming.
@@ -2387,7 +2416,9 @@ static void RenderThread() {
               j.juliaImS.empty() ? nullptr : j.juliaImS.c_str(),
               j.pal, j.colorMode, false, j.rotation,
               grad.count ? &grad : nullptr, outPtr,
-              req.outPitch > 0 ? req.outPitch : j.viewW, &g_stopRender, &mr);
+              req.outPitch > 0 ? req.outPitch : j.viewW, &g_stopRender, &mr,
+              j.expr.empty() ? nullptr : j.expr.c_str(),
+              j.params.empty() ? nullptr : j.params.c_str());
           if (drew) {
             st.bits = mr.digits;
             st.refLen = mr.refLen;
@@ -2395,14 +2426,14 @@ static void RenderThread() {
             st.glitches = mr.glitches;
             st.perturb = true;
             st.maxIterUsed = req.maxIter;
-            /* The reference core reports the largest escape count it saw.  Pass
+            /* The recovered core reports the largest escape count it saw.  Pass
              * it on: without it the pass metadata carries escMax=0 and the page
              * reads that as "nothing escapes here", i.e. the "no structure"
              * banner on every deep frame.  0 means "did not report", so it is
              * only forwarded when the core actually saw an escape. */
             if (mr.maxEscape > 0) st.escapeMax = mr.maxEscape;
             /* One line per distinct view is enough to tell from the log which
-             * producer drew it: the C++ core reports the digits and
+             * producer drew it: the reconstructed core reports the digits and
              * reference length it actually used. */
             static int msetLogs = 0;
             static int lastView = -1;
@@ -2999,6 +3030,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       return 0;
     }
     case WM_TIMER:
+      /* 0x69: the page did not report a painted splash in time.  Show the
+       * window anyway; an invisible product is worse than a dark one. */
+      if (wp == 0x69) {
+        KillTimer(hwnd, 0x69);
+        ShowAppWindow("failsafe");
+        return 0;
+      }
       if (wp >= 0x61 && wp <= 0x67) {
         KillTimer(hwnd, wp);
         if (wp == 0x61) {
@@ -3235,6 +3273,7 @@ static void ControllerFailed(HRESULT hr) {
    * another process (a leaked msedgewebview2 from an older run).  Without a
    * controller the window has no UI at all, which reads as a black screen. */
   LogMsg("[wv2] controller failed hr=" + std::to_string((int)hr));
+  ShowAppWindow("controller failed");
   if (!std::getenv("MB_NO_BOX")) {
     MessageBoxW(g_hwnd, L"界面未能启动：WebView2 配置目录被占用。\n请关闭其他 Mandelbrot View 窗口后重试。",
                 L"Mandelbrot View", MB_ICONWARNING | MB_OK);
@@ -3422,8 +3461,13 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
                            x, y, w, h, nullptr, nullptr, hInst, nullptr);
   if (!g_hwnd) { LogMsg("[boot] CreateWindow failed"); return 1; }
   ApplyDarkTitleBar(g_hwnd);
-  ShowWindow(g_hwnd, maxed ? SW_SHOWMAXIMIZED : SW_SHOW);
-  UpdateWindow(g_hwnd);
+  /* The window stays hidden until the page has painted its own splash (the
+   * `splashPainted` message below).  Showing it earlier is what put a black
+   * rectangle on screen for the 1-2 s WebView2 needs to create its renderer,
+   * parse the bundle and compile shaders.  The failsafe timer keeps a broken
+   * WebView2 from leaving the product invisible. */
+  g_startMaxed = maxed != 0;
+  SetTimer(g_hwnd, 0x69, 2500, nullptr);
 
   // Route 1: a native child window under the transparent WebView2 carries the
   // picture.  The OpenGL canvas is the product path; the D3D11 bitblt canvas
@@ -3461,7 +3505,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
         /* OpenCL is opt-in until the new core owns the compute path.  Left on
          * by default it hijacks the frame: the kernel writes a float field for
          * the OLD engine's request, the dispatcher skips the RGBA upload, and
-         * the C++ core never runs at all (log: bits=53, ref=0).
+         * the reconstructed core never runs at all (log: bits=53, ref=0).
          * MB_CL=1 enables it for measurement. */
         g_gpuField = clEnv && std::atoi(clEnv) != 0;
         LogMsg("[cl] device " + gi.clDevice + " " + gi.clVersion +

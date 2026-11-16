@@ -1,9 +1,9 @@
 // Floatexp — a floating point with a double mantissa and a 64-bit decimal
 // exponent:  value = mantissa * 10^exponent, 1 <= |mantissa| < 10.
 //
-// This is the functional equivalent of the reference engine's HFLOAT /
+// This is the functional equivalent of the original binary's HFLOAT /
 // HFLOATCOMPLEX (a ~62-bit mantissa with a 32-bit binary exponent, see
-// _HFLOAT in the reference DWARF types).  A double mantissa gives ~16
+// _HFLOAT in the recovered DWARF types).  A double mantissa gives ~16
 // significant digits; the 64-bit exponent removes every overflow/underflow
 // limit, so a coordinate at 10^-800000 is as representable as one at 10^-8.
 //
@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <limits>
