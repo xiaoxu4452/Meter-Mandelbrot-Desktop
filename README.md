@@ -3,7 +3,7 @@
 [中文说明 / Chinese README](README.zh.md)
 
 A scientific deep-zoom Mandelbrot / Julia engine with a Win32 + WebView2
-desktop application and a portable C++20 command-line renderer. Version 0.11
+desktop application and a portable C++20 command-line renderer. Version 0.12
 (2026-11-16).
 
 The engine reaches **10^60000** magnification in well under a second on an
@@ -244,6 +244,7 @@ criterion, periodic centres and the Newton solvers.
 | 1e6000 at `c=i`, 320×200 | 84 ms |
 | 1e60000 at `c=i`, 160×100, maxiter 200000 | 0.65 s (was > 20 min, no frame) |
 | AVX2 four-wide `iterate_quad_d` | 33 → 8 ms main loop, byte-identical to scalar |
+| Deep Julia frames with an early-escaping reference | finished in double from the last (Z, d) pair; the same fix is in the WebAssembly core |
 | GMP step cost (6000…120000 bits) | 22 / 43 / 106 / 463 / 980 µs, no FFT threshold |
 | Tricorn 360×220 at 1e120, 2500 iters, 4 reference orbits | 81 ms, reference length 2501, escapes 534..583 |
 | Family frames vs direct BigFloat iteration (16×12, 1e60 and 1e120) | escapes identical; 2/192 pixels move ≤5 iterations on a fold of celtic |

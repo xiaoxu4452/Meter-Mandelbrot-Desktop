@@ -177,6 +177,7 @@ mset family-point --kind tricorn --preperiod 3 --period 1 --digits 220 ^
 | 1e6000 `c=i`，320×200 | 84 ms |
 | 1e60000 `c=i`，160×100 / maxiter 200000 | 0.65 s（此前 > 20 分钟不出帧） |
 | AVX2 四宽 `iterate_quad_d` | 主趟 33 → 8 ms，与标量逐字节相同 |
+| 深层 Julia 参考轨道提前逃逸 | 从最后一组 (Z, d) 用 double 继续；WebAssembly 核心同步修复 |
 | GMP 每步（6000…120000 位） | 22 / 43 / 106 / 463 / 980 µs，无 FFT 阈值跳变 |
 
 `mset nucleus` 对 Example 14 解出周期 11196（200 位 0.2 s，6100 位 21 s）；
