@@ -54,7 +54,9 @@ without make or CMake:
 
 ```bash
 g++ -O3 -std=c++20 -mavx2 -mfma -Wall -Wextra -pthread -Isrc \
-  src/bigfloat.cpp src/gmp_bridge.cpp src/dive.cpp src/reference.cpp \
+  src/bigfloat.cpp src/mathx/bigmath.cpp src/mathx/expr.cpp \
+  src/mathx/families.cpp \
+  src/gmp_bridge.cpp src/dive.cpp src/reference.cpp \
   src/deep.cpp src/render.cpp src/palette.cpp src/image.cpp \
   src/workspace.cpp src/port/registry.cpp src/main.cpp \
   -o build-linux/mset -ldl -lpthread

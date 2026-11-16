@@ -26,6 +26,9 @@ fi
 
 sources=(
   src/bigfloat.cpp
+  src/mathx/bigmath.cpp
+  src/mathx/expr.cpp
+  src/mathx/families.cpp
   src/gmp_bridge.cpp
   src/dive.cpp
   src/reference.cpp

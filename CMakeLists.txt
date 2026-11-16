@@ -20,10 +20,15 @@ option(MB_AVX2       "Build the four-pixel AVX2 kernel (needs an AVX2 CPU)" ON)
 option(MB_BUILD_TESTS "Build the b2 verification programs" OFF)
 
 # Exactly the translation-unit list in buildall.bat: the portable C++20
-# engine and its platform bridge.  The optional helper trees under src/app
-# and src/port are not part of the command-line engine build.
+# engine, the applied-mathematics library (src/mathx: arbitrary-precision
+# elementary functions, the formula parser/VM and the deep family engine) and
+# the platform bridge.  The optional helper trees under src/app and src/port
+# are not part of the command-line engine build.
 set(MB_CORE_SOURCES
   src/bigfloat.cpp
+  src/mathx/bigmath.cpp
+  src/mathx/expr.cpp
+  src/mathx/families.cpp
   src/gmp_bridge.cpp
   src/dive.cpp
   src/reference.cpp

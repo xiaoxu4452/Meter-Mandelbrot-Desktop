@@ -34,6 +34,9 @@ jobs:
         run: |
           g++ -O3 -std=c++20 -mavx2 -mfma -pthread -Isrc \
             src/bigfloat.cpp \
+            src/mathx/bigmath.cpp \
+            src/mathx/expr.cpp \
+            src/mathx/families.cpp \
             src/gmp_bridge.cpp \
             src/dive.cpp \
             src/reference.cpp \
@@ -55,6 +58,27 @@ jobs:
       - name: 1e38 oracle comparison
         continue-on-error: true
         run: ./build-linux/cmp 38 3000 5
+
+      # The applied-mathematics library is the other half of the engine.  These
+      # are the same programs tests/expr.bat and tests/family.bat run on Windows:
+      # 120-digit identities, the analytic jet against a finite difference of the
+      # evaluator itself, and each pixel of a 1e60 / 1e120 frame against a direct
+      # arbitrary-precision iteration.
+      - name: Build the math-library checks
+        run: |
+          g++ -O2 -std=c++20 -pthread -Isrc \
+            src/bigfloat.cpp src/mathx/bigmath.cpp src/mathx/expr.cpp \
+            tests/test_expr.cpp -o build-linux/test_expr -ldl -lpthread
+          g++ -O2 -std=c++20 -pthread -Isrc \
+            src/bigfloat.cpp src/mathx/bigmath.cpp src/mathx/expr.cpp \
+            src/mathx/families.cpp \
+            tests/test_family.cpp -o build-linux/test_family -ldl -lpthread
+
+      - name: Math-library checks (120-digit identities, family oracle)
+        timeout-minutes: 25
+        run: |
+          ./build-linux/test_expr
+          ./build-linux/test_family
 
       # Build path 2: CMake, Release.
       - name: Build with CMake (Release)
